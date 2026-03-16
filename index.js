@@ -1,7 +1,7 @@
-const http       = require("http");
-const WebSocket  = require("ws");
+const http      = require("http");
+const WebSocket = require("ws");
 const WebSocketServer = WebSocket.Server;
-const express    = require("express");
+const express   = require("express");
 
 const port = Number(process.env.PORT || 3000);
 const app  = express();
@@ -27,13 +27,51 @@ const BULLET_RADIUS = 5;
 const PLAYER_RADIUS = 18;
 
 const SPAWNS = [
-  { x: 150, y: 300 },
-  { x: 650, y: 300 },
+  { x: 80,  y: 300 },
+  { x: 720, y: 300 },
 ];
 
+// Engeller: [x, y, genislik, yukseklik]
+const OBSTACLES = [
+  [340, 260, 120, 80],
+  [140, 180,  70, 50],
+  [140, 370,  70, 50],
+  [590, 180,  70, 50],
+  [590, 370,  70, 50],
+  [240, 290,  55, 40],
+  [505, 290,  55, 40],
+];
+
+// AABB - nokta çarpışma kontrolü (mermi için)
+function bulletHitsObstacle(bx, by) {
+  for (const obs of OBSTACLES) {
+    const [ox, oy, ow, oh] = obs;
+    if (bx + BULLET_RADIUS > ox && bx - BULLET_RADIUS < ox + ow &&
+        by + BULLET_RADIUS > oy && by - BULLET_RADIUS < oy + oh) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// AABB - daire çarpışma (oyuncu için)
+function playerHitsObstacle(px, py) {
+  for (const obs of OBSTACLES) {
+    const [ox, oy, ow, oh] = obs;
+    const cx = Math.max(ox, Math.min(px, ox + ow));
+    const cy = Math.max(oy, Math.min(py, oy + oh));
+    const dx = px - cx;
+    const dy = py - cy;
+    if (dx * dx + dy * dy < PLAYER_RADIUS * PLAYER_RADIUS) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // --- ODA YÖNETİMİ ---
-let waitingClient = null;  // Rakip bekleyen oyuncu
-let rooms = [];            // Aktif odalar
+let waitingClient = null;
+let rooms = [];
 
 function createRoom(clientA, clientB) {
   const room = {
@@ -48,7 +86,6 @@ function createRoom(clientA, clientB) {
     loop: null,
   };
 
-  // Oyuncuları oluştur
   [clientA, clientB].forEach((ws, idx) => {
     const spawn = SPAWNS[idx];
     room.players[ws.sessionId] = {
@@ -64,20 +101,17 @@ function createRoom(clientA, clientB) {
     };
   });
 
-  // Her iki oyuncuya "joined" gönder
   [clientA, clientB].forEach((ws, idx) => {
     send(ws, {
-      type:      "joined",
-      sessionId: ws.sessionId,
+      type:        "joined",
+      sessionId:   ws.sessionId,
       playerIndex: idx,
-      state:     getState(room),
+      state:       getState(room),
     });
   });
 
-  // Oyun döngüsü başlat
   room.loop = setInterval(() => tickRoom(room), TICK_MS);
   rooms.push(room);
-
   console.log("Oda olusturuldu: " + room.id);
   return room;
 }
@@ -94,26 +128,20 @@ function getState(room) {
 function broadcast(room, msg) {
   const str = JSON.stringify(msg);
   room.clients.forEach((ws) => {
-    if (ws.readyState === ws.OPEN) {
-      ws.send(str);
-    }
+    if (ws.readyState === ws.OPEN) ws.send(str);
   });
 }
 
 function send(ws, msg) {
-  if (ws.readyState === ws.OPEN) {
-    ws.send(JSON.stringify(msg));
-  }
+  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
 }
 
 // --- OYUN DÖNGÜSÜ ---
 function tickRoom(room) {
   if (room.phase !== "playing") return;
-
   const now = Date.now();
   const dt  = (now - room.lastTick) / 1000;
   room.lastTick = now;
-
   moveBullets(room, dt);
   broadcast(room, { type: "state", state: getState(room) });
 }
@@ -125,42 +153,42 @@ function moveBullets(room, dt) {
     b.x += b.vx * dt;
     b.y += b.vy * dt;
 
+    // Arena dışı
     if (b.x < 0 || b.x > ARENA_W || b.y < 0 || b.y > ARENA_H) {
       toRemove.push(bid);
       return;
     }
 
+    // Engele çarptı mı?
+    if (bulletHitsObstacle(b.x, b.y)) {
+      toRemove.push(bid);
+      return;
+    }
+
+    // Oyuncuya çarptı mı?
     Object.values(room.players).forEach((p) => {
       if (!p.alive || p.sessionId === b.ownerId) return;
-
       const dx   = p.x - b.x;
       const dy   = p.y - b.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-
       if (dist < PLAYER_RADIUS + BULLET_RADIUS) {
         p.hp -= BULLET_DMG;
         toRemove.push(bid);
-
         if (p.hp <= 0) {
           p.hp    = 0;
           p.alive = false;
           p.deaths++;
-
           const killer = room.players[b.ownerId];
           if (killer) {
             killer.kills++;
-
             if (killer.kills >= WIN_KILLS) {
               room.phase    = "gameover";
               room.winnerId = killer.sessionId;
               clearInterval(room.loop);
               broadcast(room, { type: "state", state: getState(room) });
-              console.log("Kazanan: " + killer.sessionId);
               return;
             }
           }
-
-          // Respawn
           const pRef = p;
           setTimeout(() => {
             if (room.phase !== "playing") return;
@@ -178,21 +206,19 @@ function moveBullets(room, dt) {
   toRemove.forEach((bid) => delete room.bullets[bid]);
 }
 
-// --- WEBSOCKET BAĞLANTILARI ---
+// --- WEBSOCKET ---
 let sessionCounter = 0;
 
 wss.on("connection", (ws) => {
   ws.sessionId = "p" + (++sessionCounter);
   ws.room      = null;
-
   console.log("Baglandi: " + ws.sessionId);
 
-  // Eşleştirme
   if (waitingClient && waitingClient.readyState === waitingClient.OPEN) {
     const room = createRoom(waitingClient, ws);
-    ws.room           = room;
+    ws.room            = room;
     waitingClient.room = room;
-    waitingClient     = null;
+    waitingClient      = null;
   } else {
     waitingClient = ws;
     send(ws, { type: "waiting", message: "Rakip bekleniyor..." });
@@ -201,16 +227,19 @@ wss.on("connection", (ws) => {
   ws.on("message", (data) => {
     const room = ws.room;
     if (!room || room.phase !== "playing") return;
-
     let msg;
     try { msg = JSON.parse(data); } catch { return; }
-
     const p = room.players[ws.sessionId];
     if (!p) return;
 
     if (msg.type === "move" && p.alive) {
-      p.x     = Math.max(PLAYER_RADIUS, Math.min(ARENA_W - PLAYER_RADIUS, msg.x));
-      p.y     = Math.max(PLAYER_RADIUS, Math.min(ARENA_H - PLAYER_RADIUS, msg.y));
+      const nx = Math.max(PLAYER_RADIUS, Math.min(ARENA_W - PLAYER_RADIUS, msg.x));
+      const ny = Math.max(PLAYER_RADIUS, Math.min(ARENA_H - PLAYER_RADIUS, msg.y));
+      // Engel kontrolü sunucu tarafında da yap
+      if (!playerHitsObstacle(nx, ny)) {
+        p.x = nx;
+        p.y = ny;
+      }
       p.angle = msg.angle;
     }
 
@@ -229,9 +258,7 @@ wss.on("connection", (ws) => {
 
   ws.on("close", () => {
     console.log("Ayrildi: " + ws.sessionId);
-    if (waitingClient === ws) {
-      waitingClient = null;
-    }
+    if (waitingClient === ws) waitingClient = null;
     const room = ws.room;
     if (room && room.phase === "playing") {
       room.phase = "gameover";
@@ -240,9 +267,7 @@ wss.on("connection", (ws) => {
     }
   });
 
-  ws.on("error", (err) => {
-    console.error("WS hatasi: " + err.message);
-  });
+  ws.on("error", (err) => console.error("WS hatasi: " + err.message));
 });
 
 server.listen(port, () => {
