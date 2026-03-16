@@ -15,8 +15,8 @@ const server = http.createServer(app);
 const wss    = new WebSocketServer({ server });
 
 // --- SABİTLER ---
-const ARENA_W       = 800;
-const ARENA_H       = 600;
+const ARENA_W       = 1280;
+const ARENA_H       = 720;
 const BULLET_SPEED  = 600;
 const BULLET_DMG    = 20;
 const MAX_HP        = 100;
@@ -27,16 +27,16 @@ const BULLET_RADIUS = 5;
 const PLAYER_RADIUS = 18;
 
 const SPAWNS = [
-  { x: 80,  y: 300 },
-  { x: 720, y: 300 },
+  { x: 100, y: 360 },
+  { x: 1180, y: 360 },
 ];
 
 // Engeller: [x, y, genislik, yukseklik]
 const OBSTACLES = [
-  [120, 100, 60, 120],
-  [120, 380, 60, 120],
-  [620, 100, 60, 120],
-  [620, 380, 60, 120],
+  [180, 120, 75, 150],
+  [180, 450, 75, 150],
+  [1025, 120, 75, 150],
+  [1025, 450, 75, 150],
 ];
 
 // AABB - nokta çarpışma kontrolü (mermi için)
