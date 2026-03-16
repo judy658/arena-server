@@ -298,8 +298,8 @@ wss.on("connection", (ws) => {
             broadcast(room, { type: "state", state: getState(room) });
             return;
           }
-          // Round sistemi - herkes spawn'a döner, geri sayım başlar
-          startRoundBreak(room);
+          // Round sistemi
+          if (room.phase === "playing") startRoundBreak(room);
         }
       });
     }
@@ -321,35 +321,42 @@ wss.on("connection", (ws) => {
 
 // Round sistemi
 function startRoundBreak(room) {
-  if (room.phase !== "playing") return;
-  room.phase      = "roundbreak";
-  room.countdown  = 3;
-
   // Herkes spawn'a ışınla, freeze et
+  room.phase     = "roundbreak";
+  room.countdown = 3;
+
+  // Bullets temizle
+  room.bullets = {};
+
   Object.values(room.players).forEach((p) => {
     const spawn = SPAWNS[p.playerIndex] || SPAWNS[0];
-    p.x     = spawn.x;
-    p.y     = spawn.y;
-    p.hp    = MAX_HP;
-    p.alive = true;
+    p.x      = spawn.x;
+    p.y      = spawn.y;
+    p.hp     = MAX_HP;
+    p.alive  = true;
     p.frozen = true;
   });
 
   broadcast(room, { type: "state", state: getState(room) });
 
-  // Geri sayım
+  // 3... 2... 1... başla
   let count = 3;
   const countInterval = setInterval(() => {
+    if (room.phase === "gameover") {
+      clearInterval(countInterval);
+      return;
+    }
     count--;
     room.countdown = count;
     broadcast(room, { type: "state", state: getState(room) });
 
     if (count <= 0) {
       clearInterval(countInterval);
-      // Round başla
       room.phase = "playing";
+      room.countdown = 0;
       Object.values(room.players).forEach((p) => { p.frozen = false; });
       broadcast(room, { type: "state", state: getState(room) });
+      console.log("Round basladi!");
     }
   }, 1000);
 }
