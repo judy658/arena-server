@@ -95,6 +95,7 @@ function createRoom(clientA, clientB) {
       kills:       0,
       deaths:      0,
       playerIndex: idx,
+      boosting:    false,
     };
   });
 
@@ -232,12 +233,12 @@ wss.on("connection", (ws) => {
     if (msg.type === "move" && p.alive) {
       const nx = Math.max(PLAYER_RADIUS, Math.min(ARENA_W - PLAYER_RADIUS, msg.x));
       const ny = Math.max(PLAYER_RADIUS, Math.min(ARENA_H - PLAYER_RADIUS, msg.y));
-      // Engel kontrolü sunucu tarafında da yap
       if (!playerHitsObstacle(nx, ny)) {
         p.x = nx;
         p.y = ny;
       }
-      p.angle = msg.angle;
+      p.angle    = msg.angle;
+      p.boosting = msg.boosting || false;
     }
 
     if (msg.type === "shoot" && p.alive) {
