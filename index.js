@@ -96,6 +96,7 @@ function createRoom(clientA, clientB) {
       deaths:      0,
       playerIndex: idx,
       boosting:    false,
+      weapon:      1,
     };
   });
 
@@ -239,6 +240,7 @@ wss.on("connection", (ws) => {
       }
       p.angle    = msg.angle;
       p.boosting = msg.boosting || false;
+      p.weapon   = msg.weapon !== undefined ? msg.weapon : 1;
     }
 
     if (msg.type === "shoot" && p.alive) {
