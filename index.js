@@ -8,20 +8,18 @@ const app  = express();
 app.use(express.json());
 
 app.get("/", (req, res) => {
-  res.json({ status: "ok", game: "Arena 1v1", uptime: process.uptime() });
+  res.json({ status: "ok", game: "Zortorant", uptime: process.uptime() });
 });
 
 const server = http.createServer(app);
 const wss    = new WebSocketServer({ server });
 
-// --- SABİTLER ---
 const ARENA_W       = 1280;
 const ARENA_H       = 720;
 const BULLET_SPEED  = 600;
 const BULLET_DMG    = 20;
 const MAX_HP        = 100;
 const TICK_MS       = 20;
-const RESPAWN_MS    = 3000;
 const WIN_KILLS     = 5;
 const BULLET_RADIUS = 5;
 const PLAYER_RADIUS = 18;
@@ -31,7 +29,6 @@ const SPAWNS = [
   { x: 1180, y: 360 },
 ];
 
-// Engeller: [x, y, genislik, yukseklik]
 const OBSTACLES = [
   [180, 120, 75, 150],
   [180, 450, 75, 150],
@@ -39,7 +36,6 @@ const OBSTACLES = [
   [1025, 450, 75, 150],
 ];
 
-// AABB - nokta çarpışma kontrolü (mermi için)
 function bulletHitsObstacle(bx, by) {
   for (const obs of OBSTACLES) {
     const [ox, oy, ow, oh] = obs;
@@ -51,7 +47,6 @@ function bulletHitsObstacle(bx, by) {
   return false;
 }
 
-// AABB - daire çarpışma (oyuncu için)
 function playerHitsObstacle(px, py) {
   for (const obs of OBSTACLES) {
     const [ox, oy, ow, oh] = obs;
@@ -59,70 +54,38 @@ function playerHitsObstacle(px, py) {
     const cy = Math.max(oy, Math.min(py, oy + oh));
     const dx = px - cx;
     const dy = py - cy;
-    if (dx * dx + dy * dy < PLAYER_RADIUS * PLAYER_RADIUS) {
-      return true;
-    }
+    if (dx * dx + dy * dy < PLAYER_RADIUS * PLAYER_RADIUS) return true;
   }
   return false;
 }
 
-// --- ODA YÖNETİMİ ---
 let waitingClient = null;
 let rooms = [];
 
-function createRoom(clientA, clientB) {
-  const room = {
-    id: Math.random().toString(36).slice(2),
-    clients: [clientA, clientB],
-    players: {},
-    bullets: {},
-    phase: "roundbreak",
-    winnerId: "",
-    bulletCounter: 0,
-    lastTick: Date.now(),
-    loop: null,
-    countdown: 3,
+function makePlayer(ws, idx) {
+  const spawn = SPAWNS[idx];
+  return {
+    sessionId:   ws.sessionId,
+    x:           spawn.x,
+    y:           spawn.y,
+    angle:       0,
+    hp:          MAX_HP,
+    alive:       true,
+    kills:       0,
+    deaths:      0,
+    playerIndex: idx,
+    boosting:    false,
+    weapon:      1,
+    knifing:     false,
+    frozen:      true,
   };
-
-  [clientA, clientB].forEach((ws, idx) => {
-    const spawn = SPAWNS[idx];
-    room.players[ws.sessionId] = {
-      sessionId:   ws.sessionId,
-      x:           spawn.x,
-      y:           spawn.y,
-      angle:       0,
-      hp:          MAX_HP,
-      alive:       true,
-      kills:       0,
-      deaths:      0,
-      playerIndex: idx,
-      boosting:    false,
-      weapon:      1,
-      knifing:     false,
-      frozen:      true,
-    };
-  });
-
-  [clientA, clientB].forEach((ws, idx) => {
-    send(ws, {
-      type:        "joined",
-      sessionId:   ws.sessionId,
-      playerIndex: idx,
-      state:       getState(room),
-    });
-  });
-
-  room.loop = setInterval(() => tickRoom(room), TICK_MS);
-  rooms.push(room);
-  console.log("Oda olusturuldu: " + room.id);
-  return room;
 }
 
 function getState(room) {
   return {
     phase:     room.phase,
     winnerId:  room.winnerId,
-    countdown: room.countdown || 0,
+    countdown: room.countdown,
     players:   room.players,
     bullets:   room.bullets,
   };
@@ -139,11 +102,92 @@ function send(ws, msg) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
 }
 
-// --- OYUN DÖNGÜSÜ ---
+// =====================
+// ROUND SİSTEMİ
+// =====================
+function startRoundBreak(room) {
+  console.log("Round break basliyor...");
+  room.phase     = "roundbreak";
+  room.countdown = 3;
+  room.bullets   = {};
+
+  Object.values(room.players).forEach((p) => {
+    const spawn = SPAWNS[p.playerIndex] || SPAWNS[0];
+    p.x      = spawn.x;
+    p.y      = spawn.y;
+    p.hp     = MAX_HP;
+    p.alive  = true;
+    p.frozen = true;
+  });
+
+  broadcast(room, { type: "state", state: getState(room) });
+
+  let count = 3;
+  const iv = setInterval(() => {
+    if (room.phase === "gameover") { clearInterval(iv); return; }
+
+    count--;
+    room.countdown = count;
+    broadcast(room, { type: "state", state: getState(room) });
+    console.log("Countdown: " + count);
+
+    if (count <= 0) {
+      clearInterval(iv);
+      room.phase     = "playing";
+      room.countdown = 0;
+      Object.values(room.players).forEach((p) => { p.frozen = false; });
+      broadcast(room, { type: "state", state: getState(room) });
+      console.log("Round basladi!");
+    }
+  }, 1000);
+}
+
+// =====================
+// ODA
+// =====================
+function createRoom(clientA, clientB) {
+  const room = {
+    id:            Math.random().toString(36).slice(2),
+    clients:       [clientA, clientB],
+    players:       {},
+    bullets:       {},
+    phase:         "waiting",
+    winnerId:      "",
+    countdown:     0,
+    bulletCounter: 0,
+    lastTick:      Date.now(),
+    loop:          null,
+  };
+
+  room.players[clientA.sessionId] = makePlayer(clientA, 0);
+  room.players[clientB.sessionId] = makePlayer(clientB, 1);
+
+  [clientA, clientB].forEach((ws, idx) => {
+    send(ws, {
+      type:        "joined",
+      sessionId:   ws.sessionId,
+      playerIndex: idx,
+      state:       getState(room),
+    });
+  });
+
+  room.loop = setInterval(() => tickRoom(room), TICK_MS);
+  rooms.push(room);
+  console.log("Oda olusturuldu: " + room.id);
+
+  // 500ms sonra ilk round başlat
+  setTimeout(() => {
+    if (room.clients.length === 2) startRoundBreak(room);
+  }, 500);
+
+  return room;
+}
+
+// =====================
+// OYUN DÖNGÜSÜ
+// =====================
 function tickRoom(room) {
   if (room.phase !== "playing") return;
-  // Frozen oyuncular hareket edemez
-
   const now = Date.now();
   const dt  = (now - room.lastTick) / 1000;
   room.lastTick = now;
@@ -158,31 +202,21 @@ function moveBullets(room, dt) {
     b.x += b.vx * dt;
     b.y += b.vy * dt;
 
-    // Arena dışı
     if (b.x < 0 || b.x > ARENA_W || b.y < 0 || b.y > ARENA_H) {
-      toRemove.push(bid);
-      return;
+      toRemove.push(bid); return;
     }
-
-    // Engele çarptı mı?
     if (bulletHitsObstacle(b.x, b.y)) {
-      toRemove.push(bid);
-      return;
+      toRemove.push(bid); return;
     }
 
-    // Oyuncuya çarptı mı?
     Object.values(room.players).forEach((p) => {
       if (!p.alive || p.sessionId === b.ownerId) return;
-      const dx   = p.x - b.x;
-      const dy   = p.y - b.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < PLAYER_RADIUS + BULLET_RADIUS) {
+      const dx = p.x - b.x, dy = p.y - b.y;
+      if (Math.sqrt(dx*dx+dy*dy) < PLAYER_RADIUS + BULLET_RADIUS) {
         p.hp -= BULLET_DMG;
         toRemove.push(bid);
         if (p.hp <= 0) {
-          p.hp    = 0;
-          p.alive = false;
-          p.deaths++;
+          p.hp = 0; p.alive = false; p.deaths++;
           const killer = room.players[b.ownerId];
           if (killer) {
             killer.kills++;
@@ -194,15 +228,7 @@ function moveBullets(room, dt) {
               return;
             }
           }
-          const pRef = p;
-          setTimeout(() => {
-            if (room.phase !== "playing") return;
-            const spawn = SPAWNS[pRef.playerIndex] || SPAWNS[0];
-            pRef.x     = spawn.x;
-            pRef.y     = spawn.y;
-            pRef.hp    = MAX_HP;
-            pRef.alive = true;
-          }, RESPAWN_MS);
+          startRoundBreak(room);
         }
       }
     });
@@ -211,7 +237,9 @@ function moveBullets(room, dt) {
   toRemove.forEach((bid) => delete room.bullets[bid]);
 }
 
-// --- WEBSOCKET ---
+// =====================
+// WEBSOCKET
+// =====================
 let sessionCounter = 0;
 
 wss.on("connection", (ws) => {
@@ -231,65 +259,48 @@ wss.on("connection", (ws) => {
 
   ws.on("message", (data) => {
     const room = ws.room;
-    if (!room || room.phase !== "playing") return;
+    if (!room) return;
+
     let msg;
     try { msg = JSON.parse(data); } catch { return; }
     const p = room.players[ws.sessionId];
     if (!p) return;
 
-    if (msg.type === "move" && p.alive && !p.frozen) {
-      const nx = Math.max(PLAYER_RADIUS, Math.min(ARENA_W - PLAYER_RADIUS, msg.x));
-      const ny = Math.max(PLAYER_RADIUS, Math.min(ARENA_H - PLAYER_RADIUS, msg.y));
-      if (!playerHitsObstacle(nx, ny)) {
-        p.x = nx;
-        p.y = ny;
+    if (msg.type === "move") {
+      if (!p.frozen) {
+        const nx = Math.max(PLAYER_RADIUS, Math.min(ARENA_W - PLAYER_RADIUS, msg.x));
+        const ny = Math.max(PLAYER_RADIUS, Math.min(ARENA_H - PLAYER_RADIUS, msg.y));
+        if (!playerHitsObstacle(nx, ny)) { p.x = nx; p.y = ny; }
       }
       p.angle    = msg.angle;
       p.boosting = msg.boosting || false;
       p.weapon   = msg.weapon !== undefined ? msg.weapon : 1;
       p.knifing  = msg.knifing || false;
-    } else if (msg.type === "move") {
-      // Frozen olsa da açıyı güncelle
-      p.angle   = msg.angle;
-      p.weapon  = msg.weapon !== undefined ? msg.weapon : 1;
-      p.knifing = msg.knifing || false;
     }
 
-    if (msg.type === "shoot" && p.alive && !p.frozen) {
+    if (msg.type === "shoot" && p.alive && !p.frozen && room.phase === "playing") {
       const bid = "b" + (++room.bulletCounter);
       room.bullets[bid] = {
-        id:      bid,
-        ownerId: ws.sessionId,
-        x:       msg.x,
-        y:       msg.y,
-        vx:      Math.cos(msg.angle) * BULLET_SPEED,
-        vy:      Math.sin(msg.angle) * BULLET_SPEED,
+        id: bid, ownerId: ws.sessionId,
+        x: msg.x, y: msg.y,
+        vx: Math.cos(msg.angle) * BULLET_SPEED,
+        vy: Math.sin(msg.angle) * BULLET_SPEED,
       };
     }
 
-    if (msg.type === "knife" && p.alive && !p.frozen) {
-      const KNIFE_RANGE  = 60;
-      const KNIFE_DAMAGE = 70;
-      const kx = msg.x + Math.cos(msg.angle) * KNIFE_RANGE * 0.5;
-      const ky = msg.y + Math.sin(msg.angle) * KNIFE_RANGE * 0.5;
-      // Yay şeklinde kontrol: açı ±60 derece içindeki düşmanlar
+    if (msg.type === "knife" && p.alive && !p.frozen && room.phase === "playing") {
+      const KNIFE_RANGE = 60, KNIFE_DAMAGE = 70;
       Object.values(room.players).forEach((target) => {
         if (!target.alive || target.sessionId === ws.sessionId) return;
-        const dx   = target.x - msg.x;
-        const dy   = target.y - msg.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist > KNIFE_RANGE + PLAYER_RADIUS) return;
-        // Açı kontrolü
-        const targetAngle = Math.atan2(dy, dx);
-        let angleDiff = targetAngle - msg.angle;
-        while (angleDiff >  Math.PI) angleDiff -= 2 * Math.PI;
-        while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
-        if (Math.abs(angleDiff) > Math.PI / 3) return; // 60 derece dışı
+        const dx = target.x - msg.x, dy = target.y - msg.y;
+        if (Math.sqrt(dx*dx+dy*dy) > KNIFE_RANGE + PLAYER_RADIUS) return;
+        let angleDiff = Math.atan2(dy, dx) - msg.angle;
+        while (angleDiff >  Math.PI) angleDiff -= 2*Math.PI;
+        while (angleDiff < -Math.PI) angleDiff += 2*Math.PI;
+        if (Math.abs(angleDiff) > Math.PI/3) return;
         target.hp -= KNIFE_DAMAGE;
         if (target.hp <= 0) {
-          target.hp    = 0;
-          target.alive = false;
-          target.deaths++;
+          target.hp = 0; target.alive = false; target.deaths++;
           p.kills++;
           if (p.kills >= WIN_KILLS) {
             room.phase    = "gameover";
@@ -298,8 +309,7 @@ wss.on("connection", (ws) => {
             broadcast(room, { type: "state", state: getState(room) });
             return;
           }
-          // Round sistemi
-          if (room.phase === "playing") startRoundBreak(room);
+          startRoundBreak(room);
         }
       });
     }
@@ -309,7 +319,7 @@ wss.on("connection", (ws) => {
     console.log("Ayrildi: " + ws.sessionId);
     if (waitingClient === ws) waitingClient = null;
     const room = ws.room;
-    if (room && room.phase === "playing") {
+    if (room && room.phase !== "gameover") {
       room.phase = "gameover";
       clearInterval(room.loop);
       broadcast(room, { type: "state", state: getState(room) });
@@ -319,48 +329,6 @@ wss.on("connection", (ws) => {
   ws.on("error", (err) => console.error("WS hatasi: " + err.message));
 });
 
-// Round sistemi
-function startRoundBreak(room) {
-  // Herkes spawn'a ışınla, freeze et
-  room.phase     = "roundbreak";
-  room.countdown = 3;
-
-  // Bullets temizle
-  room.bullets = {};
-
-  Object.values(room.players).forEach((p) => {
-    const spawn = SPAWNS[p.playerIndex] || SPAWNS[0];
-    p.x      = spawn.x;
-    p.y      = spawn.y;
-    p.hp     = MAX_HP;
-    p.alive  = true;
-    p.frozen = true;
-  });
-
-  broadcast(room, { type: "state", state: getState(room) });
-
-  // 3... 2... 1... başla
-  let count = 3;
-  const countInterval = setInterval(() => {
-    if (room.phase === "gameover") {
-      clearInterval(countInterval);
-      return;
-    }
-    count--;
-    room.countdown = count;
-    broadcast(room, { type: "state", state: getState(room) });
-
-    if (count <= 0) {
-      clearInterval(countInterval);
-      room.phase = "playing";
-      room.countdown = 0;
-      Object.values(room.players).forEach((p) => { p.frozen = false; });
-      broadcast(room, { type: "state", state: getState(room) });
-      console.log("Round basladi!");
-    }
-  }, 1000);
-}
-
 server.listen(port, () => {
-  console.log("Arena sunucu " + port + " portunda calisiyor");
+  console.log("Zortorant sunucu " + port + " portunda calisiyor");
 });
