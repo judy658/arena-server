@@ -76,11 +76,12 @@ function createRoom(clientA, clientB) {
     clients: [clientA, clientB],
     players: {},
     bullets: {},
-    phase: "playing",
+    phase: "roundbreak",
     winnerId: "",
     bulletCounter: 0,
     lastTick: Date.now(),
     loop: null,
+    countdown: 3,
   };
 
   [clientA, clientB].forEach((ws, idx) => {
@@ -98,6 +99,7 @@ function createRoom(clientA, clientB) {
       boosting:    false,
       weapon:      1,
       knifing:     false,
+      frozen:      true,
     };
   });
 
@@ -118,10 +120,11 @@ function createRoom(clientA, clientB) {
 
 function getState(room) {
   return {
-    phase:    room.phase,
-    winnerId: room.winnerId,
-    players:  room.players,
-    bullets:  room.bullets,
+    phase:     room.phase,
+    winnerId:  room.winnerId,
+    countdown: room.countdown || 0,
+    players:   room.players,
+    bullets:   room.bullets,
   };
 }
 
@@ -139,6 +142,8 @@ function send(ws, msg) {
 // --- OYUN DÖNGÜSÜ ---
 function tickRoom(room) {
   if (room.phase !== "playing") return;
+  // Frozen oyuncular hareket edemez
+
   const now = Date.now();
   const dt  = (now - room.lastTick) / 1000;
   room.lastTick = now;
@@ -232,7 +237,7 @@ wss.on("connection", (ws) => {
     const p = room.players[ws.sessionId];
     if (!p) return;
 
-    if (msg.type === "move" && p.alive) {
+    if (msg.type === "move" && p.alive && !p.frozen) {
       const nx = Math.max(PLAYER_RADIUS, Math.min(ARENA_W - PLAYER_RADIUS, msg.x));
       const ny = Math.max(PLAYER_RADIUS, Math.min(ARENA_H - PLAYER_RADIUS, msg.y));
       if (!playerHitsObstacle(nx, ny)) {
@@ -243,9 +248,14 @@ wss.on("connection", (ws) => {
       p.boosting = msg.boosting || false;
       p.weapon   = msg.weapon !== undefined ? msg.weapon : 1;
       p.knifing  = msg.knifing || false;
+    } else if (msg.type === "move") {
+      // Frozen olsa da açıyı güncelle
+      p.angle   = msg.angle;
+      p.weapon  = msg.weapon !== undefined ? msg.weapon : 1;
+      p.knifing = msg.knifing || false;
     }
 
-    if (msg.type === "shoot" && p.alive) {
+    if (msg.type === "shoot" && p.alive && !p.frozen) {
       const bid = "b" + (++room.bulletCounter);
       room.bullets[bid] = {
         id:      bid,
@@ -257,7 +267,7 @@ wss.on("connection", (ws) => {
       };
     }
 
-    if (msg.type === "knife" && p.alive) {
+    if (msg.type === "knife" && p.alive && !p.frozen) {
       const KNIFE_RANGE  = 60;
       const KNIFE_DAMAGE = 70;
       const kx = msg.x + Math.cos(msg.angle) * KNIFE_RANGE * 0.5;
@@ -288,13 +298,8 @@ wss.on("connection", (ws) => {
             broadcast(room, { type: "state", state: getState(room) });
             return;
           }
-          const pRef = target;
-          setTimeout(() => {
-            if (room.phase !== "playing") return;
-            const spawn = SPAWNS[pRef.playerIndex] || SPAWNS[0];
-            pRef.x = spawn.x; pRef.y = spawn.y;
-            pRef.hp = MAX_HP; pRef.alive = true;
-          }, RESPAWN_MS);
+          // Round sistemi - herkes spawn'a döner, geri sayım başlar
+          startRoundBreak(room);
         }
       });
     }
@@ -313,6 +318,41 @@ wss.on("connection", (ws) => {
 
   ws.on("error", (err) => console.error("WS hatasi: " + err.message));
 });
+
+// Round sistemi
+function startRoundBreak(room) {
+  if (room.phase !== "playing") return;
+  room.phase      = "roundbreak";
+  room.countdown  = 3;
+
+  // Herkes spawn'a ışınla, freeze et
+  Object.values(room.players).forEach((p) => {
+    const spawn = SPAWNS[p.playerIndex] || SPAWNS[0];
+    p.x     = spawn.x;
+    p.y     = spawn.y;
+    p.hp    = MAX_HP;
+    p.alive = true;
+    p.frozen = true;
+  });
+
+  broadcast(room, { type: "state", state: getState(room) });
+
+  // Geri sayım
+  let count = 3;
+  const countInterval = setInterval(() => {
+    count--;
+    room.countdown = count;
+    broadcast(room, { type: "state", state: getState(room) });
+
+    if (count <= 0) {
+      clearInterval(countInterval);
+      // Round başla
+      room.phase = "playing";
+      Object.values(room.players).forEach((p) => { p.frozen = false; });
+      broadcast(room, { type: "state", state: getState(room) });
+    }
+  }, 1000);
+}
 
 server.listen(port, () => {
   console.log("Arena sunucu " + port + " portunda calisiyor");
