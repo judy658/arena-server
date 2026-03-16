@@ -1,5 +1,6 @@
 const http       = require("http");
-const { WebSocketServer } = require("ws");
+const WebSocket  = require("ws");
+const WebSocketServer = WebSocket.Server;
 const express    = require("express");
 
 const port = Number(process.env.PORT || 3000);
