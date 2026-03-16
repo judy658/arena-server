@@ -252,6 +252,48 @@ wss.on("connection", (ws) => {
         vy:      Math.sin(msg.angle) * BULLET_SPEED,
       };
     }
+
+    if (msg.type === "knife" && p.alive) {
+      const KNIFE_RANGE  = 60;
+      const KNIFE_DAMAGE = 70;
+      const kx = msg.x + Math.cos(msg.angle) * KNIFE_RANGE * 0.5;
+      const ky = msg.y + Math.sin(msg.angle) * KNIFE_RANGE * 0.5;
+      // Yay şeklinde kontrol: açı ±60 derece içindeki düşmanlar
+      Object.values(room.players).forEach((target) => {
+        if (!target.alive || target.sessionId === ws.sessionId) return;
+        const dx   = target.x - msg.x;
+        const dy   = target.y - msg.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist > KNIFE_RANGE + PLAYER_RADIUS) return;
+        // Açı kontrolü
+        const targetAngle = Math.atan2(dy, dx);
+        let angleDiff = targetAngle - msg.angle;
+        while (angleDiff >  Math.PI) angleDiff -= 2 * Math.PI;
+        while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+        if (Math.abs(angleDiff) > Math.PI / 3) return; // 60 derece dışı
+        target.hp -= KNIFE_DAMAGE;
+        if (target.hp <= 0) {
+          target.hp    = 0;
+          target.alive = false;
+          target.deaths++;
+          p.kills++;
+          if (p.kills >= WIN_KILLS) {
+            room.phase    = "gameover";
+            room.winnerId = p.sessionId;
+            clearInterval(room.loop);
+            broadcast(room, { type: "state", state: getState(room) });
+            return;
+          }
+          const pRef = target;
+          setTimeout(() => {
+            if (room.phase !== "playing") return;
+            const spawn = SPAWNS[pRef.playerIndex] || SPAWNS[0];
+            pRef.x = spawn.x; pRef.y = spawn.y;
+            pRef.hp = MAX_HP; pRef.alive = true;
+          }, RESPAWN_MS);
+        }
+      });
+    }
   });
 
   ws.on("close", () => {
