@@ -59,7 +59,7 @@ function playerHitsObstacle(px, py) {
   return false;
 }
 
-let waitingClient = null;
+let waitingQueue = [];  // {ws, elo} listesi
 let rooms = [];
 
 function makePlayer(ws, idx) {
@@ -86,6 +86,7 @@ function getState(room) {
     phase:     room.phase,
     winnerId:  room.winnerId,
     countdown: room.countdown,
+    eloChange: room.eloChange || 0,
     players:   room.players,
     bullets:   room.bullets,
   };
@@ -154,6 +155,7 @@ function createRoom(clientA, clientB) {
     phase:         "waiting",
     winnerId:      "",
     countdown:     0,
+    eloChange:     10,
     bulletCounter: 0,
     lastTick:      Date.now(),
     loop:          null,
@@ -247,14 +249,28 @@ wss.on("connection", (ws) => {
   ws.room      = null;
   console.log("Baglandi: " + ws.sessionId);
 
-  if (waitingClient && waitingClient.readyState === waitingClient.OPEN) {
-    const room = createRoom(waitingClient, ws);
-    ws.room            = room;
-    waitingClient.room = room;
-    waitingClient      = null;
+  const myElo = ws.elo || 0;
+  
+  // Kuyruktaki en yakın elolu rakibi bul
+  let bestMatch = -1;
+  let bestDiff  = Infinity;
+  for (let i = 0; i < waitingQueue.length; i++) {
+    const entry = waitingQueue[i];
+    if (entry.ws.readyState !== entry.ws.OPEN) {
+      waitingQueue.splice(i, 1); i--; continue;
+    }
+    const diff = Math.abs((entry.elo || 0) - myElo);
+    if (diff < bestDiff) { bestDiff = diff; bestMatch = i; }
+  }
+
+  if (bestMatch >= 0) {
+    const opponent = waitingQueue.splice(bestMatch, 1)[0];
+    const room = createRoom(opponent.ws, ws);
+    ws.room           = room;
+    opponent.ws.room  = room;
   } else {
-    waitingClient = ws;
-    send(ws, { type: "waiting", message: "Rakip bekleniyor..." });
+    waitingQueue.push({ ws, elo: myElo });
+    send(ws, { type: "waiting", message: "Rakip aranıyor..." });
   }
 
   ws.on("message", (data) => {
@@ -265,6 +281,11 @@ wss.on("connection", (ws) => {
     try { msg = JSON.parse(data); } catch { return; }
     const p = room.players[ws.sessionId];
     if (!p) return;
+
+    if (msg.type === "elo") {
+      ws.elo = msg.elo || 0;
+      console.log(ws.sessionId + " elo: " + ws.elo);
+    }
 
     if (msg.type === "move") {
       if (!p.frozen) {
@@ -317,7 +338,9 @@ wss.on("connection", (ws) => {
 
   ws.on("close", () => {
     console.log("Ayrildi: " + ws.sessionId);
-    if (waitingClient === ws) waitingClient = null;
+    // Kuyruktan çıkar
+    const qi = waitingQueue.findIndex(e => e.ws === ws);
+    if (qi >= 0) waitingQueue.splice(qi, 1);
     const room = ws.room;
     if (room && room.phase !== "gameover") {
       room.phase = "gameover";
