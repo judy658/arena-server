@@ -197,6 +197,44 @@ function tickRoom(room) {
   broadcast(room, { type: "state", state: getState(room) });
 }
 
+function applyDamage(room, target, attacker, dmg) {
+  // Zırh aktifse hasarı yansıt
+  if (target.armorActive && attacker) {
+    const REFLECT = 20;
+    attacker.hp -= REFLECT;
+    if (attacker.hp <= 0) {
+      attacker.hp = 0; attacker.alive = false; attacker.deaths++;
+      target.kills++;
+      if (target.kills >= WIN_KILLS) {
+        room.phase = "gameover"; room.winnerId = target.sessionId;
+        clearInterval(room.loop);
+        broadcast(room, { type: "state", state: getState(room) });
+        return false;
+      }
+      startRoundBreak(room);
+      return false;
+    }
+    return false; // hasar yansıdı, hedefe gitmedi
+  }
+  // Normal hasar
+  target.hp -= dmg;
+  if (target.hp <= 0) {
+    target.hp = 0; target.alive = false; target.deaths++;
+    if (attacker) {
+      attacker.kills++;
+      if (attacker.kills >= WIN_KILLS) {
+        room.phase = "gameover"; room.winnerId = attacker.sessionId;
+        clearInterval(room.loop);
+        broadcast(room, { type: "state", state: getState(room) });
+        return false;
+      }
+    }
+    startRoundBreak(room);
+    return false;
+  }
+  return true;
+}
+
 function moveBullets(room, dt) {
   const toRemove = [];
 
@@ -215,23 +253,9 @@ function moveBullets(room, dt) {
       if (!p.alive || p.sessionId === b.ownerId) return;
       const dx = p.x - b.x, dy = p.y - b.y;
       if (Math.sqrt(dx*dx+dy*dy) < PLAYER_RADIUS + BULLET_RADIUS) {
-        p.hp -= BULLET_DMG;
         toRemove.push(bid);
-        if (p.hp <= 0) {
-          p.hp = 0; p.alive = false; p.deaths++;
-          const killer = room.players[b.ownerId];
-          if (killer) {
-            killer.kills++;
-            if (killer.kills >= WIN_KILLS) {
-              room.phase    = "gameover";
-              room.winnerId = killer.sessionId;
-              clearInterval(room.loop);
-              broadcast(room, { type: "state", state: getState(room) });
-              return;
-            }
-          }
-          startRoundBreak(room);
-        }
+        const killer = room.players[b.ownerId];
+        applyDamage(room, p, killer, BULLET_DMG);
       }
     });
   });
@@ -293,10 +317,11 @@ wss.on("connection", (ws) => {
         const ny = Math.max(PLAYER_RADIUS, Math.min(ARENA_H - PLAYER_RADIUS, msg.y));
         if (!playerHitsObstacle(nx, ny)) { p.x = nx; p.y = ny; }
       }
-      p.angle    = msg.angle;
-      p.boosting = msg.boosting || false;
-      p.weapon   = msg.weapon !== undefined ? msg.weapon : 1;
-      p.knifing  = msg.knifing || false;
+      p.angle       = msg.angle;
+      p.boosting    = msg.boosting || false;
+      p.weapon      = msg.weapon !== undefined ? msg.weapon : 1;
+      p.knifing     = msg.knifing || false;
+      p.armorActive = msg.armorActive || false;
     }
 
     if (msg.type === "shoot" && p.alive && !p.frozen && room.phase === "playing") {
@@ -319,19 +344,7 @@ wss.on("connection", (ws) => {
         while (angleDiff >  Math.PI) angleDiff -= 2*Math.PI;
         while (angleDiff < -Math.PI) angleDiff += 2*Math.PI;
         if (Math.abs(angleDiff) > Math.PI/3) return;
-        target.hp -= KNIFE_DAMAGE;
-        if (target.hp <= 0) {
-          target.hp = 0; target.alive = false; target.deaths++;
-          p.kills++;
-          if (p.kills >= WIN_KILLS) {
-            room.phase    = "gameover";
-            room.winnerId = p.sessionId;
-            clearInterval(room.loop);
-            broadcast(room, { type: "state", state: getState(room) });
-            return;
-          }
-          startRoundBreak(room);
-        }
+        applyDamage(room, target, p, KNIFE_DAMAGE);
       });
     }
 
@@ -349,18 +362,7 @@ wss.on("connection", (ws) => {
         while (angleDiff >  Math.PI) angleDiff -= 2*Math.PI;
         while (angleDiff < -Math.PI) angleDiff += 2*Math.PI;
         if (Math.abs(angleDiff) > Math.PI / 2.5) return;
-        target.hp -= dmg;
-        if (target.hp <= 0) {
-          target.hp = 0; target.alive = false; target.deaths++;
-          p.kills++;
-          if (p.kills >= WIN_KILLS) {
-            room.phase = "gameover"; room.winnerId = p.sessionId;
-            clearInterval(room.loop);
-            broadcast(room, { type: "state", state: getState(room) });
-            return;
-          }
-          startRoundBreak(room);
-        }
+        applyDamage(room, target, p, dmg);
       });
     }
 
@@ -372,18 +374,7 @@ wss.on("connection", (ws) => {
         if (!target.alive || target.sessionId === ws.sessionId) return;
         const dx = target.x - msg.x, dy = target.y - msg.y;
         if (Math.sqrt(dx*dx + dy*dy) > range + PLAYER_RADIUS) return;
-        target.hp -= dmg;
-        if (target.hp <= 0) {
-          target.hp = 0; target.alive = false; target.deaths++;
-          p.kills++;
-          if (p.kills >= WIN_KILLS) {
-            room.phase = "gameover"; room.winnerId = p.sessionId;
-            clearInterval(room.loop);
-            broadcast(room, { type: "state", state: getState(room) });
-            return;
-          }
-          startRoundBreak(room);
-        }
+        applyDamage(room, target, p, dmg);
       });
     }
   });
