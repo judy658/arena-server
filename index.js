@@ -193,6 +193,20 @@ function tickRoom(room) {
   const now = Date.now();
   const dt  = (now - room.lastTick) / 1000;
   room.lastTick = now;
+  // Knockback hareketi uygula
+  Object.values(room.players).forEach((p) => {
+    if (p.knockbackTimer > 0) {
+      p.knockbackTimer -= dt;
+      const spd = 1.0 - Math.max(0, p.knockbackTimer / 0.2); // yavaşla
+      const kx = (p.knockbackX || 0) * dt * (1 - spd * 0.5);
+      const ky = (p.knockbackY || 0) * dt * (1 - spd * 0.5);
+      p.x = Math.max(PLAYER_RADIUS, Math.min(ARENA_W - PLAYER_RADIUS, p.x + kx));
+      p.y = Math.max(PLAYER_RADIUS, Math.min(ARENA_H - PLAYER_RADIUS, p.y + ky));
+      if (p.knockbackTimer <= 0) {
+        p.knockbackX = 0; p.knockbackY = 0;
+      }
+    }
+  });
   moveBullets(room, dt);
   broadcast(room, { type: "state", state: getState(room) });
 }
@@ -377,10 +391,22 @@ wss.on("connection", (ws) => {
     if (msg.type === "inferno_blast" && p.alive && !p.frozen && room.phase === "playing") {
       const range = msg.range || 120;
       const dmg   = msg.damage || 50;
+      const KNOCKBACK_FORCE = 180; // piksel savurma
+      // Blast yapanı blasting olarak işaretle (animasyon için)
+      p.blasting = true;
+      setTimeout(() => { if (p) p.blasting = false; }, 400);
       Object.values(room.players).forEach((target) => {
         if (!target.alive || target.sessionId === ws.sessionId) return;
         const dx = target.x - msg.x, dy = target.y - msg.y;
-        if (Math.sqrt(dx*dx + dy*dy) > range + PLAYER_RADIUS) return;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist > range + PLAYER_RADIUS) return;
+        // Knockback — merkezden dışa doğru it
+        const nx = dist > 0 ? dx / dist : 1;
+        const ny = dist > 0 ? dy / dist : 0;
+        const force = (1 - dist / (range + PLAYER_RADIUS)) * KNOCKBACK_FORCE;
+        target.knockbackX = (target.knockbackX || 0) + nx * force;
+        target.knockbackY = (target.knockbackY || 0) + ny * force;
+        target.knockbackTimer = 0.2; // 200ms savurma
         applyDamage(room, target, p, dmg);
       });
     }
