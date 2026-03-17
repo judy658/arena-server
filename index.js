@@ -327,8 +327,9 @@ wss.on("connection", (ws) => {
 
     if (msg.type === "character") {
       const maxHp = msg.characterId === "inferno" ? 120 : 100;
-      p.maxHp = maxHp;
-      p.hp    = maxHp;
+      p.maxHp      = maxHp;
+      p.hp         = maxHp;
+      p.characterId = msg.characterId || "murffy";
       console.log(ws.sessionId + " karakter: " + msg.characterId + " HP: " + maxHp);
     }
 
