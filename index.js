@@ -343,6 +343,7 @@ wss.on("connection", (ws) => {
       p.weapon      = msg.weapon !== undefined ? msg.weapon : 1;
       p.knifing     = msg.knifing || false;
       p.armorActive = msg.armorActive || false;
+      p.firing      = msg.firing || false;
     }
 
     if (msg.type === "shoot" && p.alive && !p.frozen && room.phase === "playing") {
