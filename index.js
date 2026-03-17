@@ -116,7 +116,7 @@ function startRoundBreak(room) {
     const spawn = SPAWNS[p.playerIndex] || SPAWNS[0];
     p.x      = spawn.x;
     p.y      = spawn.y;
-    p.hp     = MAX_HP;
+    p.hp     = p.maxHp || MAX_HP;
     p.alive  = true;
     p.frozen = true;
   });
@@ -309,6 +309,13 @@ wss.on("connection", (ws) => {
     if (msg.type === "elo") {
       ws.elo = msg.elo || 0;
       console.log(ws.sessionId + " elo: " + ws.elo);
+    }
+
+    if (msg.type === "character") {
+      const maxHp = msg.characterId === "inferno" ? 120 : 100;
+      p.maxHp = maxHp;
+      p.hp    = maxHp;
+      console.log(ws.sessionId + " karakter: " + msg.characterId + " HP: " + maxHp);
     }
 
     if (msg.type === "move") {
