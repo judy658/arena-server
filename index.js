@@ -334,6 +334,58 @@ wss.on("connection", (ws) => {
         }
       });
     }
+
+    // Inferno - Alev Silahı (sürekli hasar)
+    if (msg.type === "inferno_flame" && p.alive && !p.frozen && room.phase === "playing") {
+      const range = msg.range || 80;
+      const dmg   = msg.damage || 2;
+      Object.values(room.players).forEach((target) => {
+        if (!target.alive || target.sessionId === ws.sessionId) return;
+        const dx = target.x - msg.x, dy = target.y - msg.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist > range + PLAYER_RADIUS) return;
+        // Açı kontrolü - sadece önde olanı yakar
+        let angleDiff = Math.atan2(dy, dx) - msg.angle;
+        while (angleDiff >  Math.PI) angleDiff -= 2*Math.PI;
+        while (angleDiff < -Math.PI) angleDiff += 2*Math.PI;
+        if (Math.abs(angleDiff) > Math.PI / 2.5) return;
+        target.hp -= dmg;
+        if (target.hp <= 0) {
+          target.hp = 0; target.alive = false; target.deaths++;
+          p.kills++;
+          if (p.kills >= WIN_KILLS) {
+            room.phase = "gameover"; room.winnerId = p.sessionId;
+            clearInterval(room.loop);
+            broadcast(room, { type: "state", state: getState(room) });
+            return;
+          }
+          startRoundBreak(room);
+        }
+      });
+    }
+
+    // Inferno - Alev Patlaması (AOE)
+    if (msg.type === "inferno_blast" && p.alive && !p.frozen && room.phase === "playing") {
+      const range = msg.range || 120;
+      const dmg   = msg.damage || 50;
+      Object.values(room.players).forEach((target) => {
+        if (!target.alive || target.sessionId === ws.sessionId) return;
+        const dx = target.x - msg.x, dy = target.y - msg.y;
+        if (Math.sqrt(dx*dx + dy*dy) > range + PLAYER_RADIUS) return;
+        target.hp -= dmg;
+        if (target.hp <= 0) {
+          target.hp = 0; target.alive = false; target.deaths++;
+          p.kills++;
+          if (p.kills >= WIN_KILLS) {
+            room.phase = "gameover"; room.winnerId = p.sessionId;
+            clearInterval(room.loop);
+            broadcast(room, { type: "state", state: getState(room) });
+            return;
+          }
+          startRoundBreak(room);
+        }
+      });
+    }
   });
 
   ws.on("close", () => {
