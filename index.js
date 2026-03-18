@@ -19,7 +19,7 @@ const ARENA_H       = 720;
 const BULLET_SPEED  = 600;
 const BULLET_DMG    = 20;
 const MAX_HP        = 100;
-const TICK_MS       = 5;
+const TICK_MS       = 12;
 const WIN_KILLS     = 5;
 const BULLET_RADIUS = 5;
 const PLAYER_RADIUS = 18;
@@ -356,7 +356,7 @@ wss.on("connection", (ws) => {
 
     if (msg.type === "move") {
       if (!p.frozen) {
-        const pr = p.characterId === "inferno" ? 26 : PLAYER_RADIUS;
+        const pr = p.characterId === "inferno" ? 32 : PLAYER_RADIUS;
         const nx = Math.max(pr, Math.min(ARENA_W - pr, msg.x));
         const ny = Math.max(pr, Math.min(ARENA_H - pr, msg.y));
         if (!playerHitsObstacle(nx, ny, pr)) { p.x = nx; p.y = ny; }
