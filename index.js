@@ -14,8 +14,11 @@ app.get("/", (req, res) => {
 const server = http.createServer(app);
 const wss    = new WebSocketServer({ server });
 
-const ARENA_W       = 3840;
-const ARENA_H       = 2160;
+const ARENA_W_SMALL = 1280;
+const ARENA_H_SMALL = 720;
+const ARENA_W_MEGA  = 3840;
+const ARENA_H_MEGA  = 2160;
+// Aktif arena boyutu — room bazında değişir (aşağıda)
 const BULLET_SPEED  = 600;
 const BULLET_DMG    = 20;
 const MAX_HP        = 100;
@@ -24,7 +27,11 @@ const WIN_KILLS     = 5;
 const BULLET_RADIUS = 5;
 const PLAYER_RADIUS = 18;
 
-const SPAWNS = [
+const SPAWNS_SMALL = [
+  { x: 100,  y: 360 },
+  { x: 1180, y: 360 },
+];
+const SPAWNS_MEGA = [
   { x: 263,  y: 1080 },
   { x: 3573, y: 1080 },
 ];
@@ -89,8 +96,9 @@ function playerHitsObstacle(px, py, radius = PLAYER_RADIUS) {
 let waitingQueue = [];  // {ws, elo} listesi
 let rooms = [];
 
-function makePlayer(ws, idx) {
-  const spawn = SPAWNS[idx];
+function makePlayer(ws, idx, isMega = false) {
+  const spawns = isMega ? SPAWNS_MEGA : SPAWNS_SMALL;
+  const spawn = spawns[idx] || spawns[0];
   return {
     sessionId:   ws.sessionId,
     x:           spawn.x,
@@ -142,7 +150,8 @@ function startRoundBreak(room) {
   room.bullets   = {};
 
   Object.values(room.players).forEach((p) => {
-    const spawn = SPAWNS[p.playerIndex] || SPAWNS[0];
+    const spawnList = room.isMega ? SPAWNS_MEGA : SPAWNS_SMALL;
+    const spawn = spawnList[p.playerIndex] || spawnList[0];
     p.x      = spawn.x;
     p.y      = spawn.y;
     p.hp     = p.maxHp || MAX_HP;
@@ -188,10 +197,14 @@ function createRoom(clientA, clientB) {
     bulletCounter: 0,
     lastTick:      Date.now(),
     loop:          null,
+    isMega:        false,
+    arenaW:        ARENA_W_SMALL,
+    arenaH:        ARENA_H_SMALL,
+    winKills:      WIN_KILLS,
   };
 
-  room.players[clientA.sessionId] = makePlayer(clientA, 0);
-  room.players[clientB.sessionId] = makePlayer(clientB, 1);
+  room.players[clientA.sessionId] = makePlayer(clientA, 0, room.isMega);
+  room.players[clientB.sessionId] = makePlayer(clientB, 1, room.isMega);
 
   [clientA, clientB].forEach((ws, idx) => {
     send(ws, {
@@ -285,7 +298,7 @@ function moveBullets(room, dt) {
     b.x += b.vx * dt;
     b.y += b.vy * dt;
 
-    if (b.x < 0 || b.x > ARENA_W || b.y < 0 || b.y > ARENA_H) {
+    if (b.x < 0 || b.x > room.arenaW || b.y < 0 || b.y > room.arenaH) {
       toRemove.push(bid); return;
     }
     if (bulletHitsObstacle(b.x, b.y)) {
@@ -354,10 +367,11 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "mode") {
-      const room = ws.room;
       if (room) {
         room.winKills = msg.win_kills || WIN_KILLS;
         room.isMega   = msg.mode === "mega_duel";
+        room.arenaW   = room.isMega ? ARENA_W_MEGA : ARENA_W_SMALL;
+        room.arenaH   = room.isMega ? ARENA_H_MEGA : ARENA_H_SMALL;
       }
     }
 
@@ -377,8 +391,8 @@ wss.on("connection", (ws) => {
     if (msg.type === "move") {
       if (!p.frozen) {
         const pr = p.characterId === "inferno" ? 32 : PLAYER_RADIUS;
-        const nx = Math.max(pr, Math.min(ARENA_W - pr, msg.x));
-        const ny = Math.max(pr, Math.min(ARENA_H - pr, msg.y));
+        const nx = Math.max(pr, Math.min(room.arenaW - pr, msg.x));
+        const ny = Math.max(pr, Math.min(room.arenaH - pr, msg.y));
         if (!playerHitsObstacle(nx, ny, pr)) { p.x = nx; p.y = ny; }
       }
       p.angle       = msg.angle;
