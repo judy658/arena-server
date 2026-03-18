@@ -14,8 +14,8 @@ app.get("/", (req, res) => {
 const server = http.createServer(app);
 const wss    = new WebSocketServer({ server });
 
-const ARENA_W       = 1280;
-const ARENA_H       = 720;
+const ARENA_W       = 3840;
+const ARENA_H       = 2160;
 const BULLET_SPEED  = 600;
 const BULLET_DMG    = 20;
 const MAX_HP        = 100;
@@ -25,15 +25,22 @@ const BULLET_RADIUS = 5;
 const PLAYER_RADIUS = 18;
 
 const SPAWNS = [
-  { x: 100, y: 360 },
-  { x: 1180, y: 360 },
+  { x: 200, y: 1080 },
+  { x: 3640, y: 1080 },
 ];
 
 const OBSTACLES = [
-  [180, 120, 75, 150],
-  [180, 450, 75, 150],
-  [1025, 120, 75, 150],
-  [1025, 450, 75, 150],
+  [200, 300, 80, 200],
+  [200, 1660, 80, 200],
+  [3560, 300, 80, 200],
+  [3560, 1660, 80, 200],
+  [800, 800, 100, 300],
+  [800, 1060, 100, 300],
+  [2940, 800, 100, 300],
+  [2940, 1060, 100, 300],
+  [1820, 500, 200, 150],
+  [1820, 1510, 200, 150],
+  [1770, 980, 300, 200],
 ];
 
 function bulletHitsObstacle(bx, by) {
