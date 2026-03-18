@@ -35,6 +35,15 @@ const SPAWNS_MEGA = [
   { x: 3696, y: 975 },
 ];
 
+const GLASS_PANES_MEGA = [
+  { x: 1556, y: 1020, w: 73,  h: 100 },
+  { x: 2207, y: 1020, w: 73,  h: 100 },
+  { x: 1650, y: 675,  w: 100, h: 74  },
+  { x: 1870, y: 675,  w: 100, h: 74  },
+  { x: 1650, y: 1469, w: 100, h: 74  },
+  { x: 1870, y: 1469, w: 100, h: 74  },
+];
+
 const DOORS_MEGA = [
   { x: 1846, y: 668,  w: 145, h: 14 },  // üst kapı
   { x: 1846, y: 1536, w: 145, h: 14 },  // alt kapı
@@ -107,11 +116,19 @@ function rayHitsObstacle(x1, y1, x2, y2, obstacles = OBSTACLES_SMALL) {
   return false;
 }
 
-function playerHitsObstacle(px, py, radius = PLAYER_RADIUS, obstacles = OBSTACLES_SMALL) {
+function playerHitsObstacle(px, py, radius = PLAYER_RADIUS, obstacles = OBSTACLES_SMALL, glassPanes = []) {
   for (const obs of obstacles) {
     const [ox, oy, ow, oh] = obs;
     const cx = Math.max(ox, Math.min(px, ox + ow));
     const cy = Math.max(oy, Math.min(py, oy + oh));
+    const dx = px - cx;
+    const dy = py - cy;
+    if (dx * dx + dy * dy < radius * radius) return true;
+  }
+  // Cam paneller — karakter geçemez
+  for (const g of glassPanes) {
+    const cx = Math.max(g.x, Math.min(px, g.x + g.w));
+    const cy = Math.max(g.y, Math.min(py, g.y + g.h));
     const dx = px - cx;
     const dy = py - cy;
     if (dx * dx + dy * dy < radius * radius) return true;
@@ -452,7 +469,8 @@ wss.on("connection", (ws) => {
         const arH = room.arenaH || ARENA_H_SMALL;
         const nx  = Math.max(pr, Math.min(arW - pr, msg.x));
         const ny  = Math.max(pr, Math.min(arH - pr, msg.y));
-        if (!playerHitsObstacle(nx, ny, pr, room.obstacles || OBSTACLES_SMALL)) {
+        const glass = room.isMega ? GLASS_PANES_MEGA : [];
+        if (!playerHitsObstacle(nx, ny, pr, room.obstacles || OBSTACLES_SMALL, glass)) {
           // Kum alanı hız kontrolü (sadece mega modda)
           if (room.isMega) {
             const BASE_SPEED   = 250;
