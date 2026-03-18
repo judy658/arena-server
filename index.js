@@ -35,6 +35,11 @@ const SPAWNS_MEGA = [
   { x: 3696, y: 975 },
 ];
 
+const DOORS_MEGA = [
+  { x: 1846, y: 668,  w: 145, h: 14 },  // üst kapı
+  { x: 1846, y: 1536, w: 145, h: 14 },  // alt kapı
+];
+
 const SAND_CIRCLES_MEGA = [
   { x: 857,  y: 383,  r: 171 },
   { x: 2980, y: 383,  r: 171 },
@@ -68,12 +73,21 @@ const OBSTACLES_MEGA = [
 ];
 let OBSTACLES = OBSTACLES_SMALL;
 
-function bulletHitsObstacle(bx, by, obstacles = OBSTACLES_SMALL) {
+function bulletHitsObstacle(bx, by, obstacles = OBSTACLES_SMALL, doors = [], doorsOpen = true) {
   for (const obs of obstacles) {
     const [ox, oy, ow, oh] = obs;
     if (bx + BULLET_RADIUS > ox && bx - BULLET_RADIUS < ox + ow &&
         by + BULLET_RADIUS > oy && by - BULLET_RADIUS < oy + oh) {
       return true;
+    }
+  }
+  // Kapı kapalıysa mermi geçemesin
+  if (!doorsOpen) {
+    for (const d of doors) {
+      if (bx + BULLET_RADIUS > d.x && bx - BULLET_RADIUS < d.x + d.w &&
+          by + BULLET_RADIUS > d.y && by - BULLET_RADIUS < d.y + d.h) {
+        return true;
+      }
     }
   }
   return false;
@@ -317,7 +331,8 @@ function moveBullets(room, dt) {
     if (b.x < 0 || b.x > room.arenaW || b.y < 0 || b.y > room.arenaH) {
       toRemove.push(bid); return;
     }
-    if (bulletHitsObstacle(b.x, b.y, room.obstacles || OBSTACLES_SMALL)) {
+    const doors = room.isMega ? DOORS_MEGA : [];
+    if (bulletHitsObstacle(b.x, b.y, room.obstacles || OBSTACLES_SMALL, doors, room.doorsOpen !== false)) {
       toRemove.push(bid); return;
     }
 
