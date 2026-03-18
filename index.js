@@ -137,6 +137,7 @@ function makePlayer(ws, idx, isMega = false) {
 function getState(room) {
   return {
     phase:     room.phase,
+    doorsOpen: room.doorsOpen || false,
     winnerId:  room.winnerId,
     countdown: room.countdown,
     eloChange: room.eloChange || 0,
@@ -208,6 +209,7 @@ function createRoom(clientA, clientB, mode = "duel") {
     players:       {},
     bullets:       {},
     phase:         "waiting",
+    doorsOpen:     false,
     winnerId:      "",
     countdown:     0,
     eloChange:     10,
@@ -408,6 +410,11 @@ wss.on("connection", (ws) => {
       room.winKills = msg.win_kills || WIN_KILLS;
       if (room.phase === "waiting") startRoundBreak(room);
       console.log("win_kills guncellendi: " + room.winKills);
+    }
+
+    if (msg.type === "door") {
+      room.doorsOpen = msg.open === true;
+      broadcast(room, { type: "state", state: getState(room) });
     }
 
     if (msg.type === "elo") {
