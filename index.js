@@ -61,8 +61,8 @@ const OBSTACLES_MEGA = [
 ];
 let OBSTACLES = OBSTACLES_SMALL;
 
-function bulletHitsObstacle(bx, by) {
-  for (const obs of OBSTACLES) {
+function bulletHitsObstacle(bx, by, obstacles = OBSTACLES_SMALL) {
+  for (const obs of obstacles) {
     const [ox, oy, ow, oh] = obs;
     if (bx + BULLET_RADIUS > ox && bx - BULLET_RADIUS < ox + ow &&
         by + BULLET_RADIUS > oy && by - BULLET_RADIUS < oy + oh) {
@@ -72,13 +72,13 @@ function bulletHitsObstacle(bx, by) {
   return false;
 }
 
-function rayHitsObstacle(x1, y1, x2, y2) {
+function rayHitsObstacle(x1, y1, x2, y2, obstacles = OBSTACLES_SMALL) {
   const STEPS = 10;
   for (let i = 1; i <= STEPS; i++) {
     const t  = i / STEPS;
     const rx = x1 + (x2 - x1) * t;
     const ry = y1 + (y2 - y1) * t;
-    for (const obs of OBSTACLES) {
+    for (const obs of obstacles) {
       const [ox, oy, ow, oh] = obs;
       if (rx > ox && rx < ox + ow && ry > oy && ry < oy + oh) return true;
     }
@@ -86,8 +86,8 @@ function rayHitsObstacle(x1, y1, x2, y2) {
   return false;
 }
 
-function playerHitsObstacle(px, py, radius = PLAYER_RADIUS) {
-  for (const obs of OBSTACLES) {
+function playerHitsObstacle(px, py, radius = PLAYER_RADIUS, obstacles = OBSTACLES_SMALL) {
+  for (const obs of obstacles) {
     const [ox, oy, ow, oh] = obs;
     const cx = Math.max(ox, Math.min(px, ox + ow));
     const cy = Math.max(oy, Math.min(py, oy + oh));
@@ -206,6 +206,7 @@ function createRoom(clientA, clientB) {
     arenaW:        ARENA_W_SMALL,
     arenaH:        ARENA_H_SMALL,
     winKills:      WIN_KILLS,
+    obstacles:     OBSTACLES_SMALL,
   };
 
   room.players[clientA.sessionId] = makePlayer(clientA, 0, false);
@@ -223,11 +224,7 @@ function createRoom(clientA, clientB) {
   room.loop = setInterval(() => tickRoom(room), TICK_MS);
   rooms.push(room);
   console.log("Oda olusturuldu: " + room.id);
-
-  // 500ms sonra ilk round başlat
-  setTimeout(() => {
-    if (room.clients.length === 2) startRoundBreak(room);
-  }, 500);
+  // startRoundBreak mod mesajı gelince tetiklenecek
 
   return room;
 }
@@ -306,7 +303,7 @@ function moveBullets(room, dt) {
     if (b.x < 0 || b.x > room.arenaW || b.y < 0 || b.y > room.arenaH) {
       toRemove.push(bid); return;
     }
-    if (bulletHitsObstacle(b.x, b.y)) {
+    if (bulletHitsObstacle(b.x, b.y, room.obstacles || OBSTACLES_SMALL)) {
       toRemove.push(bid); return;
     }
 
@@ -377,13 +374,17 @@ wss.on("connection", (ws) => {
         room.isMega    = msg.mode === "mega_duel";
         room.arenaW    = room.isMega ? ARENA_W_MEGA : ARENA_W_SMALL;
         room.arenaH    = room.isMega ? ARENA_H_MEGA : ARENA_H_SMALL;
-        OBSTACLES      = room.isMega ? OBSTACLES_MEGA : OBSTACLES_SMALL;
-        // Spawn'ları güncelle
+        room.obstacles = room.isMega ? OBSTACLES_MEGA : OBSTACLES_SMALL;
+        // Spawn'ları güncelle ve round başlat
         const spawns = room.isMega ? SPAWNS_MEGA : SPAWNS_SMALL;
         Object.values(room.players).forEach((pl) => {
           const sp = spawns[pl.playerIndex] || spawns[0];
           pl.x = sp.x; pl.y = sp.y;
         });
+        // Eğer henüz round başlamadıysa şimdi başlat
+        if (room.phase === "waiting") {
+          startRoundBreak(room);
+        }
         console.log("Mod: " + msg.mode + " isMega=" + room.isMega);
       }
     }
@@ -408,7 +409,7 @@ wss.on("connection", (ws) => {
         const arH = room.arenaH || ARENA_H_SMALL;
         const nx = Math.max(pr, Math.min(arW - pr, msg.x));
         const ny = Math.max(pr, Math.min(arH - pr, msg.y));
-        if (!playerHitsObstacle(nx, ny, pr)) { p.x = nx; p.y = ny; }
+        if (!playerHitsObstacle(nx, ny, pr, room.obstacles || OBSTACLES_SMALL)) { p.x = nx; p.y = ny; }
       }
       p.angle       = msg.angle;
       p.boosting    = msg.boosting || false;
@@ -456,7 +457,7 @@ wss.on("connection", (ws) => {
         while (angleDiff >  Math.PI) angleDiff -= 2*Math.PI;
         while (angleDiff < -Math.PI) angleDiff += 2*Math.PI;
         if (Math.abs(angleDiff) > Math.PI / 2.5) return;
-        if (rayHitsObstacle(msg.x, msg.y, target.x, target.y)) return;
+        if (rayHitsObstacle(msg.x, msg.y, target.x, target.y, room.obstacles || OBSTACLES_SMALL)) return;
         applyDamage(room, target, p, dmg);
       });
     }
