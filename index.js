@@ -178,9 +178,9 @@ function send(ws, msg) {
 function startRoundBreak(room) {
   console.log("Round break basliyor...");
   room.phase     = "roundbreak";
-  room.countdown = 3;
+  room.countdown = 0;
+  room.shopTimer = 0;
   room.bullets   = {};
-  room.shopTimer = 8;  // 8 saniyelik bekleme
 
   Object.values(room.players).forEach((p) => {
     const spawnList = room.isMega ? SPAWNS_MEGA : SPAWNS_SMALL;
@@ -194,42 +194,31 @@ function startRoundBreak(room) {
 
   broadcast(room, { type: "state", state: getState(room) });
 
-  // 8 saniye boyunca her saniye shopTimer'ı azalt
-  let shopCount = 8;
-  const shopIv = setInterval(() => {
-    if (room.phase === "gameover") { clearInterval(shopIv); return; }
-    shopCount--;
-    room.shopTimer = shopCount;
-    broadcast(room, { type: "state", state: getState(room) });
-    if (shopCount <= 0) clearInterval(shopIv);
-  }, 1000);
-
+  // 3 saniye "SONRAKİ ROUND" göster, sonra 8'den geri say
   setTimeout(() => {
     if (room.phase === "gameover") return;
-    room.shopTimer = 0;
 
-    let count = 3;
-    room.countdown = count;
+    let count = 8;
+    room.shopTimer = count;
     broadcast(room, { type: "state", state: getState(room) });
 
     const iv = setInterval(() => {
       if (room.phase === "gameover") { clearInterval(iv); return; }
-
       count--;
-      room.countdown = count;
+      room.shopTimer = count;
       broadcast(room, { type: "state", state: getState(room) });
       console.log("Countdown: " + count);
 
       if (count <= 0) {
         clearInterval(iv);
         room.phase     = "playing";
-        room.countdown = 0;
+        room.shopTimer = 0;
         Object.values(room.players).forEach((p) => { p.frozen = false; });
         broadcast(room, { type: "state", state: getState(room) });
         console.log("Round basladi!");
       }
     }, 1000);
-  }, 8000);
+  }, 3000);
 }
 
 // =====================
