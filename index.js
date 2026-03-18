@@ -47,14 +47,14 @@ function bulletHitsObstacle(bx, by) {
   return false;
 }
 
-function playerHitsObstacle(px, py) {
+function playerHitsObstacle(px, py, radius = PLAYER_RADIUS) {
   for (const obs of OBSTACLES) {
     const [ox, oy, ow, oh] = obs;
     const cx = Math.max(ox, Math.min(px, ox + ow));
     const cy = Math.max(oy, Math.min(py, oy + oh));
     const dx = px - cx;
     const dy = py - cy;
-    if (dx * dx + dy * dy < PLAYER_RADIUS * PLAYER_RADIUS) return true;
+    if (dx * dx + dy * dy < radius * radius) return true;
   }
   return false;
 }
@@ -337,9 +337,10 @@ wss.on("connection", (ws) => {
 
     if (msg.type === "move") {
       if (!p.frozen) {
-        const nx = Math.max(PLAYER_RADIUS, Math.min(ARENA_W - PLAYER_RADIUS, msg.x));
-        const ny = Math.max(PLAYER_RADIUS, Math.min(ARENA_H - PLAYER_RADIUS, msg.y));
-        if (!playerHitsObstacle(nx, ny)) { p.x = nx; p.y = ny; }
+        const pr = p.characterId === "inferno" ? 26 : PLAYER_RADIUS;
+        const nx = Math.max(pr, Math.min(ARENA_W - pr, msg.x));
+        const ny = Math.max(pr, Math.min(ARENA_H - pr, msg.y));
+        if (!playerHitsObstacle(nx, ny, pr)) { p.x = nx; p.y = ny; }
       }
       p.angle       = msg.angle;
       p.boosting    = msg.boosting || false;
