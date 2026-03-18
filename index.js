@@ -19,7 +19,7 @@ const ARENA_H       = 720;
 const BULLET_SPEED  = 600;
 const BULLET_DMG    = 20;
 const MAX_HP        = 100;
-const TICK_MS       = 33;
+const TICK_MS       = 20;
 const WIN_KILLS     = 5;
 const BULLET_RADIUS = 5;
 const PLAYER_RADIUS = 18;
@@ -99,42 +99,13 @@ function makePlayer(ws, idx) {
 }
 
 function getState(room) {
-  const players = {};
-  for (const sid in room.players) {
-    const p = room.players[sid];
-    players[sid] = {
-      sessionId:      p.sessionId,
-      x:              Math.round(p.x * 10) / 10,
-      y:              Math.round(p.y * 10) / 10,
-      angle:          Math.round(p.angle * 100) / 100,
-      hp:             p.hp,
-      alive:          p.alive,
-      kills:          p.kills,
-      deaths:         p.deaths,
-      playerIndex:    p.playerIndex,
-      frozen:         p.frozen,
-      boosting:       p.boosting,
-      weapon:         p.weapon,
-      knifing:        p.knifing,
-      armorActive:    p.armorActive,
-      firing:         p.firing,
-      characterId:    p.characterId || "murffy",
-      blasting:       p.blasting || false,
-      knockbackTimer: p.knockbackTimer || 0,
-    };
-  }
-  const bullets = {};
-  for (const bid in room.bullets) {
-    const b = room.bullets[bid];
-    bullets[bid] = { id: b.id, ownerId: b.ownerId, x: Math.round(b.x), y: Math.round(b.y) };
-  }
   return {
     phase:     room.phase,
     winnerId:  room.winnerId,
     countdown: room.countdown,
     eloChange: room.eloChange || 0,
-    players,
-    bullets,
+    players:   room.players,
+    bullets:   room.bullets,
   };
 }
 
