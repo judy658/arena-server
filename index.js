@@ -35,6 +35,13 @@ const SPAWNS_MEGA = [
   { x: 3696, y: 975 },
 ];
 
+const SAND_CIRCLES_MEGA = [
+  { x: 857,  y: 383,  r: 171 },
+  { x: 2980, y: 383,  r: 171 },
+  { x: 857,  y: 1773, r: 171 },
+  { x: 2980, y: 1773, r: 171 },
+];
+
 const OBSTACLES_SMALL = [
   [180, 120, 75, 150],
   [180, 450, 75, 150],
@@ -418,12 +425,38 @@ wss.on("connection", (ws) => {
 
     if (msg.type === "move") {
       if (!p.frozen) {
-        const pr = p.characterId === "inferno" ? 32 : PLAYER_RADIUS;
+        const pr  = p.characterId === "inferno" ? 32 : PLAYER_RADIUS;
         const arW = room.arenaW || ARENA_W_SMALL;
         const arH = room.arenaH || ARENA_H_SMALL;
-        const nx = Math.max(pr, Math.min(arW - pr, msg.x));
-        const ny = Math.max(pr, Math.min(arH - pr, msg.y));
-        if (!playerHitsObstacle(nx, ny, pr, room.obstacles || OBSTACLES_SMALL)) { p.x = nx; p.y = ny; }
+        const nx  = Math.max(pr, Math.min(arW - pr, msg.x));
+        const ny  = Math.max(pr, Math.min(arH - pr, msg.y));
+        if (!playerHitsObstacle(nx, ny, pr, room.obstacles || OBSTACLES_SMALL)) {
+          // Kum alanı hız kontrolü (sadece mega modda)
+          if (room.isMega) {
+            const BASE_SPEED   = 250;
+            const SAND_MULT    = 0.45;
+            const BOOST_MULT   = p.boosting ? 2.0 : 1.0;
+            const CHAR_MULT    = p.characterId === "inferno" ? 0.8 : 1.0;
+            const inSand       = SAND_CIRCLES_MEGA.some(sc => {
+              const dx = nx - sc.x, dy = ny - sc.y;
+              return dx*dx + dy*dy < sc.r * sc.r;
+            });
+            const maxSpeed = BASE_SPEED * CHAR_MULT * (inSand ? SAND_MULT : 1.0) * BOOST_MULT;
+            const dx = nx - p.x, dy = ny - p.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            // Tick başına max hareket mesafesi (TICK_MS/1000 saniye)
+            const maxDist = maxSpeed * (TICK_MS / 1000) * 6; // 6 tick tolerans
+            if (dist <= maxDist + pr) {
+              p.x = nx; p.y = ny;
+            } else {
+              // Çok hızlı gitmeye çalışıyorsa kum yönünde sınırla
+              p.x = p.x + (dx / dist) * maxDist;
+              p.y = p.y + (dy / dist) * maxDist;
+            }
+          } else {
+            p.x = nx; p.y = ny;
+          }
+        }
       }
       p.angle       = msg.angle;
       p.boosting    = msg.boosting || false;
