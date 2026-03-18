@@ -78,6 +78,8 @@ function makePlayer(ws, idx) {
     weapon:      1,
     knifing:     false,
     frozen:      true,
+    firing:      false,
+    armorActive: false,
   };
 }
 
