@@ -272,8 +272,8 @@ function tickRoom(room) {
       const spd = 1.0 - Math.max(0, p.knockbackTimer / 0.2); // yavaşla
       const kx = (p.knockbackX || 0) * dt * (1 - spd * 0.5);
       const ky = (p.knockbackY || 0) * dt * (1 - spd * 0.5);
-      p.x = Math.max(PLAYER_RADIUS, Math.min(ARENA_W - PLAYER_RADIUS, p.x + kx));
-      p.y = Math.max(PLAYER_RADIUS, Math.min(ARENA_H - PLAYER_RADIUS, p.y + ky));
+      p.x = Math.max(PLAYER_RADIUS, Math.min((room.arenaW || ARENA_W_SMALL) - PLAYER_RADIUS, p.x + kx));
+      p.y = Math.max(PLAYER_RADIUS, Math.min((room.arenaH || ARENA_H_SMALL) - PLAYER_RADIUS, p.y + ky));
       if (p.knockbackTimer <= 0) {
         p.knockbackX = 0; p.knockbackY = 0;
       }
