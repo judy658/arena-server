@@ -47,6 +47,21 @@ function bulletHitsObstacle(bx, by) {
   return false;
 }
 
+// İki nokta arasında engel var mı? (ray cast, 10 adımda kontrol)
+function rayHitsObstacle(x1, y1, x2, y2) {
+  const STEPS = 10;
+  for (let i = 1; i <= STEPS; i++) {
+    const t  = i / STEPS;
+    const rx = x1 + (x2 - x1) * t;
+    const ry = y1 + (y2 - y1) * t;
+    for (const obs of OBSTACLES) {
+      const [ox, oy, ow, oh] = obs;
+      if (rx > ox && rx < ox + ow && ry > oy && ry < oy + oh) return true;
+    }
+  }
+  return false;
+}
+
 function playerHitsObstacle(px, py, radius = PLAYER_RADIUS) {
   for (const obs of OBSTACLES) {
     const [ox, oy, ow, oh] = obs;
@@ -388,6 +403,8 @@ wss.on("connection", (ws) => {
         while (angleDiff >  Math.PI) angleDiff -= 2*Math.PI;
         while (angleDiff < -Math.PI) angleDiff += 2*Math.PI;
         if (Math.abs(angleDiff) > Math.PI / 2.5) return;
+        // Engel kontrolü - alevle hedef arasında duvar var mı?
+        if (rayHitsObstacle(msg.x, msg.y, target.x, target.y)) return;
         applyDamage(room, target, p, dmg);
       });
     }
@@ -405,6 +422,8 @@ wss.on("connection", (ws) => {
         const dx = target.x - msg.x, dy = target.y - msg.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
         if (dist > range + PLAYER_RADIUS) return;
+        // Engel kontrolü - patlama duvarı geçemesin
+        if (rayHitsObstacle(msg.x, msg.y, target.x, target.y)) return;
         // Knockback — merkezden dışa doğru it
         const nx = dist > 0 ? dx / dist : 1;
         const ny = dist > 0 ? dy / dist : 0;
