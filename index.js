@@ -98,7 +98,11 @@ function playerHitsObstacle(px, py, radius = PLAYER_RADIUS, obstacles = OBSTACLE
   return false;
 }
 
-let waitingQueue = [];  // {ws, elo} listesi
+// Her mod için ayrı kuyruk: { ws, elo }
+const waitingQueues = {
+  duel:      [],   // Normal Düello
+  mega_duel: [],   // Mega Düello
+};
 let rooms = [];
 
 function makePlayer(ws, idx, isMega = false) {
@@ -189,7 +193,8 @@ function startRoundBreak(room) {
 // =====================
 // ODA
 // =====================
-function createRoom(clientA, clientB) {
+function createRoom(clientA, clientB, mode = "duel") {
+  const isMega = mode === "mega_duel";
   const room = {
     id:            Math.random().toString(36).slice(2),
     clients:       [clientA, clientB],
@@ -202,15 +207,15 @@ function createRoom(clientA, clientB) {
     bulletCounter: 0,
     lastTick:      Date.now(),
     loop:          null,
-    isMega:        false,
-    arenaW:        ARENA_W_SMALL,
-    arenaH:        ARENA_H_SMALL,
+    isMega:        isMega,
+    arenaW:        isMega ? ARENA_W_MEGA : ARENA_W_SMALL,
+    arenaH:        isMega ? ARENA_H_MEGA : ARENA_H_SMALL,
     winKills:      WIN_KILLS,
-    obstacles:     OBSTACLES_SMALL,
+    obstacles:     isMega ? OBSTACLES_MEGA : OBSTACLES_SMALL,
   };
 
-  room.players[clientA.sessionId] = makePlayer(clientA, 0, false);
-  room.players[clientB.sessionId] = makePlayer(clientB, 1, false);
+  room.players[clientA.sessionId] = makePlayer(clientA, 0, isMega);
+  room.players[clientB.sessionId] = makePlayer(clientB, 1, isMega);
 
   [clientA, clientB].forEach((ws, idx) => {
     send(ws, {
@@ -326,67 +331,76 @@ function moveBullets(room, dt) {
 // =====================
 let sessionCounter = 0;
 
-wss.on("connection", (ws) => {
-  ws.sessionId = "p" + (++sessionCounter);
-  ws.room      = null;
-  console.log("Baglandi: " + ws.sessionId);
+function tryMatchmaking(ws, mode) {
+  const queue = waitingQueues[mode];
+  if (!queue) return;
 
   const myElo = ws.elo || 0;
-  
-  // Kuyruktaki en yakın elolu rakibi bul
+
+  // Aynı moddaki kuyruktaki en yakın elolu rakibi bul
   let bestMatch = -1;
   let bestDiff  = Infinity;
-  for (let i = 0; i < waitingQueue.length; i++) {
-    const entry = waitingQueue[i];
+  for (let i = 0; i < queue.length; i++) {
+    const entry = queue[i];
+    if (entry.ws === ws) continue;
     if (entry.ws.readyState !== entry.ws.OPEN) {
-      waitingQueue.splice(i, 1); i--; continue;
+      queue.splice(i, 1); i--; continue;
     }
     const diff = Math.abs((entry.elo || 0) - myElo);
     if (diff < bestDiff) { bestDiff = diff; bestMatch = i; }
   }
 
   if (bestMatch >= 0) {
-    const opponent = waitingQueue.splice(bestMatch, 1)[0];
-    const room = createRoom(opponent.ws, ws);
-    ws.room           = room;
-    opponent.ws.room  = room;
+    const opponent = queue.splice(bestMatch, 1)[0];
+    const room = createRoom(opponent.ws, ws, mode);
+    ws.room          = room;
+    opponent.ws.room = room;
+    console.log("Eslestirme: " + ws.sessionId + " vs " + opponent.ws.sessionId + " | mod: " + mode);
   } else {
-    waitingQueue.push({ ws, elo: myElo });
+    queue.push({ ws, elo: myElo });
     send(ws, { type: "waiting", message: "Rakip aranıyor..." });
+    console.log("Kuyruga eklendi: " + ws.sessionId + " | mod: " + mode);
   }
+}
+
+wss.on("connection", (ws) => {
+  ws.sessionId = "p" + (++sessionCounter);
+  ws.room      = null;
+  ws.mode      = null;
+  console.log("Baglandi: " + ws.sessionId);
+  // Mod bilgisi gelene kadar bekle — matchmaking "search" mesajında tetiklenir
 
   ws.on("message", (data) => {
-    const room = ws.room;
-    if (!room) return;
-
     let msg;
     try { msg = JSON.parse(data); } catch { return; }
-    const p = room.players[ws.sessionId];
-    if (!p) return;
 
     if (msg.type === "ping") {
       send(ws, { type: "pong", t: msg.t });
+      return;
     }
 
+    // --- Maç arama: mod bilgisiyle kuyruğa gir ---
+    if (msg.type === "search") {
+      if (ws.room) return; // zaten odada
+      const mode = msg.mode === "mega_duel" ? "mega_duel" : "duel";
+      ws.mode = mode;
+      ws.elo  = msg.elo || 0;
+      tryMatchmaking(ws, mode);
+      return;
+    }
+
+    // Bundan sonraki mesajlar oda gerektirir
+    const room = ws.room;
+    if (!room) return;
+    const p = room.players[ws.sessionId];
+    if (!p) return;
+
     if (msg.type === "mode") {
-      if (room) {
-        room.winKills  = msg.win_kills || WIN_KILLS;
-        room.isMega    = msg.mode === "mega_duel";
-        room.arenaW    = room.isMega ? ARENA_W_MEGA : ARENA_W_SMALL;
-        room.arenaH    = room.isMega ? ARENA_H_MEGA : ARENA_H_SMALL;
-        room.obstacles = room.isMega ? OBSTACLES_MEGA : OBSTACLES_SMALL;
-        // Spawn'ları güncelle ve round başlat
-        const spawns = room.isMega ? SPAWNS_MEGA : SPAWNS_SMALL;
-        Object.values(room.players).forEach((pl) => {
-          const sp = spawns[pl.playerIndex] || spawns[0];
-          pl.x = sp.x; pl.y = sp.y;
-        });
-        // Eğer henüz round başlamadıysa şimdi başlat
-        if (room.phase === "waiting") {
-          startRoundBreak(room);
-        }
-        console.log("Mod: " + msg.mode + " isMega=" + room.isMega);
-      }
+      // Artık sadece win_kills güncellemesi için kullanılıyor,
+      // isMega/arenaW/obstacles createRoom'da zaten doğru set edildi.
+      room.winKills = msg.win_kills || WIN_KILLS;
+      if (room.phase === "waiting") startRoundBreak(room);
+      console.log("win_kills guncellendi: " + room.winKills);
     }
 
     if (msg.type === "elo") {
@@ -489,9 +503,11 @@ wss.on("connection", (ws) => {
 
   ws.on("close", () => {
     console.log("Ayrildi: " + ws.sessionId);
-    // Kuyruktan çıkar
-    const qi = waitingQueue.findIndex(e => e.ws === ws);
-    if (qi >= 0) waitingQueue.splice(qi, 1);
+    // Tüm mod kuyruklarından çıkar
+    for (const queue of Object.values(waitingQueues)) {
+      const qi = queue.findIndex(e => e.ws === ws);
+      if (qi >= 0) queue.splice(qi, 1);
+    }
     const room = ws.room;
     if (room && room.phase !== "gameover") {
       room.phase = "gameover";
