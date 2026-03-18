@@ -366,6 +366,10 @@ wss.on("connection", (ws) => {
     const p = room.players[ws.sessionId];
     if (!p) return;
 
+    if (msg.type === "ping") {
+      send(ws, { type: "pong", t: msg.t });
+    }
+
     if (msg.type === "elo") {
       ws.elo = msg.elo || 0;
       console.log(ws.sessionId + " elo: " + ws.elo);
