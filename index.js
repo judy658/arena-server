@@ -372,6 +372,14 @@ wss.on("connection", (ws) => {
         room.isMega   = msg.mode === "mega_duel";
         room.arenaW   = room.isMega ? ARENA_W_MEGA : ARENA_W_SMALL;
         room.arenaH   = room.isMega ? ARENA_H_MEGA : ARENA_H_SMALL;
+        // Spawn pozisyonlarını moda göre güncelle
+        const spawns = room.isMega ? SPAWNS_MEGA : SPAWNS_SMALL;
+        Object.values(room.players).forEach((pl) => {
+          const spawn = spawns[pl.playerIndex] || spawns[0];
+          pl.x = spawn.x;
+          pl.y = spawn.y;
+        });
+        console.log("Mod ayarlandi: " + msg.mode + " isMega=" + room.isMega);
       }
     }
 
