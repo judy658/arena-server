@@ -18,7 +18,6 @@ const ARENA_W_SMALL = 1280;
 const ARENA_H_SMALL = 720;
 const ARENA_W_MEGA  = 3840;
 const ARENA_H_MEGA  = 2160;
-// Aktif arena boyutu — room bazında değişir (aşağıda)
 const BULLET_SPEED  = 600;
 const BULLET_DMG    = 20;
 const MAX_HP        = 100;
@@ -36,7 +35,13 @@ const SPAWNS_MEGA = [
   { x: 3696, y: 975 },
 ];
 
-const OBSTACLES = [
+const OBSTACLES_SMALL = [
+  [180, 120, 75, 150],
+  [180, 450, 75, 150],
+  [1025, 120, 75, 150],
+  [1025, 450, 75, 150],
+];
+const OBSTACLES_MEGA = [
   [408,  767,  58,  661],
   [870,  661,  100, 344],
   [870,  1111, 100, 344],
@@ -54,6 +59,7 @@ const OBSTACLES = [
   [1991, 1469, 290, 74],
   [2207, 675,  73,  868],
 ];
+let OBSTACLES = OBSTACLES_SMALL;
 
 function bulletHitsObstacle(bx, by) {
   for (const obs of OBSTACLES) {
@@ -66,7 +72,6 @@ function bulletHitsObstacle(bx, by) {
   return false;
 }
 
-// İki nokta arasında engel var mı? (ray cast, 10 adımda kontrol)
 function rayHitsObstacle(x1, y1, x2, y2) {
   const STEPS = 10;
   for (let i = 1; i <= STEPS; i++) {
@@ -203,8 +208,8 @@ function createRoom(clientA, clientB) {
     winKills:      WIN_KILLS,
   };
 
-  room.players[clientA.sessionId] = makePlayer(clientA, 0, room.isMega);
-  room.players[clientB.sessionId] = makePlayer(clientB, 1, room.isMega);
+  room.players[clientA.sessionId] = makePlayer(clientA, 0, false);
+  room.players[clientB.sessionId] = makePlayer(clientB, 1, false);
 
   [clientA, clientB].forEach((ws, idx) => {
     send(ws, {
@@ -368,18 +373,18 @@ wss.on("connection", (ws) => {
 
     if (msg.type === "mode") {
       if (room) {
-        room.winKills = msg.win_kills || WIN_KILLS;
-        room.isMega   = msg.mode === "mega_duel";
-        room.arenaW   = room.isMega ? ARENA_W_MEGA : ARENA_W_SMALL;
-        room.arenaH   = room.isMega ? ARENA_H_MEGA : ARENA_H_SMALL;
-        // Spawn pozisyonlarını moda göre güncelle
+        room.winKills  = msg.win_kills || WIN_KILLS;
+        room.isMega    = msg.mode === "mega_duel";
+        room.arenaW    = room.isMega ? ARENA_W_MEGA : ARENA_W_SMALL;
+        room.arenaH    = room.isMega ? ARENA_H_MEGA : ARENA_H_SMALL;
+        OBSTACLES      = room.isMega ? OBSTACLES_MEGA : OBSTACLES_SMALL;
+        // Spawn'ları güncelle
         const spawns = room.isMega ? SPAWNS_MEGA : SPAWNS_SMALL;
         Object.values(room.players).forEach((pl) => {
-          const spawn = spawns[pl.playerIndex] || spawns[0];
-          pl.x = spawn.x;
-          pl.y = spawn.y;
+          const sp = spawns[pl.playerIndex] || spawns[0];
+          pl.x = sp.x; pl.y = sp.y;
         });
-        console.log("Mod ayarlandi: " + msg.mode + " isMega=" + room.isMega);
+        console.log("Mod: " + msg.mode + " isMega=" + room.isMega);
       }
     }
 
@@ -390,8 +395,8 @@ wss.on("connection", (ws) => {
 
     if (msg.type === "character") {
       const maxHp = msg.characterId === "inferno" ? 120 : 100;
-      p.maxHp      = maxHp;
-      p.hp         = maxHp;
+      p.maxHp       = maxHp;
+      p.hp          = maxHp;
       p.characterId = msg.characterId || "murffy";
       console.log(ws.sessionId + " karakter: " + msg.characterId + " HP: " + maxHp);
     }
@@ -399,8 +404,10 @@ wss.on("connection", (ws) => {
     if (msg.type === "move") {
       if (!p.frozen) {
         const pr = p.characterId === "inferno" ? 32 : PLAYER_RADIUS;
-        const nx = Math.max(pr, Math.min(room.arenaW - pr, msg.x));
-        const ny = Math.max(pr, Math.min(room.arenaH - pr, msg.y));
+        const arW = room.arenaW || ARENA_W_SMALL;
+        const arH = room.arenaH || ARENA_H_SMALL;
+        const nx = Math.max(pr, Math.min(arW - pr, msg.x));
+        const ny = Math.max(pr, Math.min(arH - pr, msg.y));
         if (!playerHitsObstacle(nx, ny, pr)) { p.x = nx; p.y = ny; }
       }
       p.angle       = msg.angle;
@@ -449,7 +456,6 @@ wss.on("connection", (ws) => {
         while (angleDiff >  Math.PI) angleDiff -= 2*Math.PI;
         while (angleDiff < -Math.PI) angleDiff += 2*Math.PI;
         if (Math.abs(angleDiff) > Math.PI / 2.5) return;
-        // Engel kontrolü - alevle hedef arasında duvar var mı?
         if (rayHitsObstacle(msg.x, msg.y, target.x, target.y)) return;
         applyDamage(room, target, p, dmg);
       });
@@ -468,8 +474,6 @@ wss.on("connection", (ws) => {
         const dx = target.x - msg.x, dy = target.y - msg.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
         if (dist > range + PLAYER_RADIUS) return;
-        // Engel kontrolü - patlama duvarı geçemesin
-        if (rayHitsObstacle(msg.x, msg.y, target.x, target.y)) return;
         // Knockback — merkezden dışa doğru it
         const nx = dist > 0 ? dx / dist : 1;
         const ny = dist > 0 ? dy / dist : 0;
