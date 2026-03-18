@@ -35,15 +35,6 @@ const SPAWNS_MEGA = [
   { x: 3696, y: 975 },
 ];
 
-const GLASS_PANES_MEGA = [
-  { x: 1556, y: 1020, w: 73,  h: 100 },
-  { x: 2207, y: 1020, w: 73,  h: 100 },
-  { x: 1650, y: 675,  w: 100, h: 74  },
-  { x: 1870, y: 675,  w: 100, h: 74  },
-  { x: 1650, y: 1469, w: 100, h: 74  },
-  { x: 1870, y: 1469, w: 100, h: 74  },
-];
-
 const DOORS_MEGA = [
   { x: 1846, y: 668,  w: 145, h: 14 },  // üst kapı
   { x: 1846, y: 1536, w: 145, h: 14 },  // alt kapı
@@ -116,19 +107,11 @@ function rayHitsObstacle(x1, y1, x2, y2, obstacles = OBSTACLES_SMALL) {
   return false;
 }
 
-function playerHitsObstacle(px, py, radius = PLAYER_RADIUS, obstacles = OBSTACLES_SMALL, glassPanes = []) {
+function playerHitsObstacle(px, py, radius = PLAYER_RADIUS, obstacles = OBSTACLES_SMALL) {
   for (const obs of obstacles) {
     const [ox, oy, ow, oh] = obs;
     const cx = Math.max(ox, Math.min(px, ox + ow));
     const cy = Math.max(oy, Math.min(py, oy + oh));
-    const dx = px - cx;
-    const dy = py - cy;
-    if (dx * dx + dy * dy < radius * radius) return true;
-  }
-  // Cam paneller — karakter geçemez
-  for (const g of glassPanes) {
-    const cx = Math.max(g.x, Math.min(px, g.x + g.w));
-    const cy = Math.max(g.y, Math.min(py, g.y + g.h));
     const dx = px - cx;
     const dy = py - cy;
     if (dx * dx + dy * dy < radius * radius) return true;
@@ -171,6 +154,7 @@ function getState(room) {
     doorsOpen: room.doorsOpen || false,
     winnerId:  room.winnerId,
     countdown: room.countdown,
+    shopTimer: room.shopTimer || 0,
     eloChange: room.eloChange || 0,
     players:   room.players,
     bullets:   room.bullets,
@@ -196,6 +180,7 @@ function startRoundBreak(room) {
   room.phase     = "roundbreak";
   room.countdown = 3;
   room.bullets   = {};
+  room.shopTimer = 8;  // 8 saniyelik bekleme
 
   Object.values(room.players).forEach((p) => {
     const spawnList = room.isMega ? SPAWNS_MEGA : SPAWNS_SMALL;
@@ -209,24 +194,42 @@ function startRoundBreak(room) {
 
   broadcast(room, { type: "state", state: getState(room) });
 
-  let count = 3;
-  const iv = setInterval(() => {
-    if (room.phase === "gameover") { clearInterval(iv); return; }
+  // 8 saniye boyunca her saniye shopTimer'ı azalt
+  let shopCount = 8;
+  const shopIv = setInterval(() => {
+    if (room.phase === "gameover") { clearInterval(shopIv); return; }
+    shopCount--;
+    room.shopTimer = shopCount;
+    broadcast(room, { type: "state", state: getState(room) });
+    if (shopCount <= 0) clearInterval(shopIv);
+  }, 1000);
 
-    count--;
+  setTimeout(() => {
+    if (room.phase === "gameover") return;
+    room.shopTimer = 0;
+
+    let count = 3;
     room.countdown = count;
     broadcast(room, { type: "state", state: getState(room) });
-    console.log("Countdown: " + count);
 
-    if (count <= 0) {
-      clearInterval(iv);
-      room.phase     = "playing";
-      room.countdown = 0;
-      Object.values(room.players).forEach((p) => { p.frozen = false; });
+    const iv = setInterval(() => {
+      if (room.phase === "gameover") { clearInterval(iv); return; }
+
+      count--;
+      room.countdown = count;
       broadcast(room, { type: "state", state: getState(room) });
-      console.log("Round basladi!");
-    }
-  }, 1000);
+      console.log("Countdown: " + count);
+
+      if (count <= 0) {
+        clearInterval(iv);
+        room.phase     = "playing";
+        room.countdown = 0;
+        Object.values(room.players).forEach((p) => { p.frozen = false; });
+        broadcast(room, { type: "state", state: getState(room) });
+        console.log("Round basladi!");
+      }
+    }, 1000);
+  }, 8000);
 }
 
 // =====================
@@ -469,8 +472,7 @@ wss.on("connection", (ws) => {
         const arH = room.arenaH || ARENA_H_SMALL;
         const nx  = Math.max(pr, Math.min(arW - pr, msg.x));
         const ny  = Math.max(pr, Math.min(arH - pr, msg.y));
-        const glass = room.isMega ? GLASS_PANES_MEGA : [];
-        if (!playerHitsObstacle(nx, ny, pr, room.obstacles || OBSTACLES_SMALL, glass)) {
+        if (!playerHitsObstacle(nx, ny, pr, room.obstacles || OBSTACLES_SMALL)) {
           // Kum alanı hız kontrolü (sadece mega modda)
           if (room.isMega) {
             const BASE_SPEED   = 250;
