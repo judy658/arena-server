@@ -32,8 +32,8 @@ const SPAWNS_SMALL = [
   { x: 1180, y: 360 },
 ];
 const SPAWNS_MEGA = [
-  { x: 550,  y: 1080 },
-  { x: 3290, y: 1080 },
+  { x: 144,  y: 975 },
+  { x: 3696, y: 975 },
 ];
 
 const OBSTACLES = [
