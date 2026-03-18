@@ -25,22 +25,27 @@ const BULLET_RADIUS = 5;
 const PLAYER_RADIUS = 18;
 
 const SPAWNS = [
-  { x: 200, y: 1080 },
-  { x: 3640, y: 1080 },
+  { x: 263,  y: 1080 },
+  { x: 3573, y: 1080 },
 ];
 
 const OBSTACLES = [
-  [200, 300, 80, 200],
-  [200, 1660, 80, 200],
-  [3560, 300, 80, 200],
-  [3560, 1660, 80, 200],
-  [800, 800, 100, 300],
-  [800, 1060, 100, 300],
-  [2940, 800, 100, 300],
-  [2940, 1060, 100, 300],
-  [1820, 500, 200, 150],
-  [1820, 1510, 200, 150],
-  [1770, 980, 300, 200],
+  [408,  767,  58,  661],
+  [870,  661,  100, 344],
+  [870,  1111, 100, 344],
+  [1516, 145,  100, 344],
+  [2162, 145,  100, 344],
+  [1516, 1654, 100, 344],
+  [2162, 1654, 100, 344],
+  [2861, 661,  100, 344],
+  [2861, 1111, 100, 344],
+  [3375, 767,  58,  661],
+  [1556, 675,  290, 74],
+  [1556, 1469, 290, 74],
+  [1556, 675,  73,  868],
+  [1991, 675,  290, 74],
+  [1991, 1469, 290, 74],
+  [2207, 675,  73,  868],
 ];
 
 function bulletHitsObstacle(bx, by) {
@@ -243,7 +248,7 @@ function applyDamage(room, target, attacker, dmg) {
     if (attacker.hp <= 0) {
       attacker.hp = 0; attacker.alive = false; attacker.deaths++;
       target.kills++;
-      if (target.kills >= WIN_KILLS) {
+      if (target.kills >= (room.winKills || WIN_KILLS)) {
         room.phase = "gameover"; room.winnerId = target.sessionId;
         clearInterval(room.loop);
         broadcast(room, { type: "state", state: getState(room) });
@@ -260,7 +265,7 @@ function applyDamage(room, target, attacker, dmg) {
     target.hp = 0; target.alive = false; target.deaths++;
     if (attacker) {
       attacker.kills++;
-      if (attacker.kills >= WIN_KILLS) {
+      if (attacker.kills >= (room.winKills || WIN_KILLS)) {
         room.phase = "gameover"; room.winnerId = attacker.sessionId;
         clearInterval(room.loop);
         broadcast(room, { type: "state", state: getState(room) });
@@ -346,6 +351,14 @@ wss.on("connection", (ws) => {
 
     if (msg.type === "ping") {
       send(ws, { type: "pong", t: msg.t });
+    }
+
+    if (msg.type === "mode") {
+      const room = ws.room;
+      if (room) {
+        room.winKills = msg.win_kills || WIN_KILLS;
+        room.isMega   = msg.mode === "mega_duel";
+      }
     }
 
     if (msg.type === "elo") {
