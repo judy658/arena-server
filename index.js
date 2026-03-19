@@ -11,6 +11,19 @@ app.get("/", (req, res) => {
   res.json({ status: "ok", game: "Zortorant", uptime: process.uptime() });
 });
 
+// Yük durumu endpoint'i — load balancing için
+app.get("/status", (req, res) => {
+  const playerCount = rooms.reduce((n, r) => n + r.clients.filter(c => c.readyState === c.OPEN).length, 0);
+  const roomCount   = rooms.filter(r => r.phase !== "gameover").length;
+  res.json({
+    status:   "ok",
+    players:  playerCount,
+    rooms:    roomCount,
+    capacity: 60,
+    full:     playerCount >= 60,
+  });
+});
+
 const server = http.createServer(app);
 const wss    = new WebSocketServer({ server });
 
