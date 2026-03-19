@@ -499,18 +499,16 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "smoke_throw") {
-      // Grenade patlama pozisyonunu sunucu hesaplar (client açı+hız gönderir)
       const SMOKE_SPEED  = 280.0;
       const SMOKE_RANGE  = 400.0;
-      const SMOKE_TRAVEL = SMOKE_RANGE / SMOKE_SPEED;  // sn
       const angle = msg.angle || 0;
       const landX = p.x + Math.cos(angle) * SMOKE_RANGE;
       const landY = p.y + Math.sin(angle) * SMOKE_RANGE;
       if (!room.smokeClouds) room.smokeClouds = [];
       room.smokeClouds.push({
         x: landX, y: landY,
-        life: 6.0, maxLife: 6.0,
-        maxR: 90.0,
+        life: 12.0, maxLife: 12.0,  // 2x süre
+        maxR: 180.0,                  // 2x alan
       });
     }
 
@@ -581,6 +579,8 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "knife" && p.alive && !p.frozen && room.phase === "playing") {
+      p.knifing = true;
+      setTimeout(() => { p.knifing = false; }, 300); // swing animasyonu süresi
       const KNIFE_RANGE = 60, KNIFE_DAMAGE = 70;
       Object.values(room.players).forEach((target) => {
         if (!target.alive || target.sessionId === ws.sessionId) return;
