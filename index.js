@@ -2,6 +2,7 @@ const http      = require("http");
 const WebSocket = require("ws");
 const WebSocketServer = WebSocket.Server;
 const express   = require("express");
+const https     = require("https");
 
 // =====================
 // SUPABASE (Arena DB)
@@ -11,24 +12,44 @@ const AR_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 
 const GITHUB_RAW = "https://raw.githubusercontent.com/judy658/arena-server/main/music_kits";
 
-// Oyuncunun music_kit'ini Supabase'den çek
-async function fetchMusicKit(username) {
-  try {
+// Oyuncunun music_kit'ini Supabase'den çek (https modülü ile)
+function fetchMusicKit(username) {
+  return new Promise((resolve) => {
+    const path = `/rest/v1/zortorant_players?username=eq.${encodeURIComponent(username)}&select=music%20kit&limit=1`;
+    const options = {
+      hostname: "kxbjcrtpnslimbqwebpx.supabase.co",
+      path:     path,
+      method:   "GET",
+      headers:  {
+        "apikey":        AR_KEY,
+        "Authorization": `Bearer ${AR_KEY}`,
+      }
+    };
     console.log(`Supabase sorgusu: username=${username}`);
-    const res = await fetch(
-      `${AR_URL}/rest/v1/zortorant_players?username=eq.${encodeURIComponent(username)}&select=music%20kit&limit=1`,
-      { headers: { "apikey": AR_KEY, "Authorization": `Bearer ${AR_KEY}` } }
-    );
-    const data = await res.json();
-    console.log(`Supabase yanıtı:`, JSON.stringify(data));
-    if (data && data[0] && data[0]["music kit"]) {
-      return data[0]["music kit"];
-    }
-    return null;
-  } catch(e) {
-    console.error("fetchMusicKit error:", e.message);
-    return null;
-  }
+    const req = https.request(options, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        try {
+          const data = JSON.parse(body);
+          console.log(`Supabase yanıtı:`, JSON.stringify(data));
+          if (data && data[0] && data[0]["music kit"]) {
+            resolve(data[0]["music kit"]);
+          } else {
+            resolve(null);
+          }
+        } catch(e) {
+          console.error("fetchMusicKit parse error:", e.message);
+          resolve(null);
+        }
+      });
+    });
+    req.on("error", (e) => {
+      console.error("fetchMusicKit error:", e.message);
+      resolve(null);
+    });
+    req.end();
+  });
 }
 
 const port = Number(process.env.PORT || 3000);
