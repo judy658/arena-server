@@ -3,6 +3,32 @@ const WebSocket = require("ws");
 const WebSocketServer = WebSocket.Server;
 const express   = require("express");
 
+// =====================
+// SUPABASE (Arena DB)
+// =====================
+const AR_URL = "https://kxbjcrtpnslimbqwebpx.supabase.co";
+const AR_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YmpjcnRwbnNsaW1icXdlYnB4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDI5MjEsImV4cCI6MjA4OTE3ODkyMX0.0moP-KsjTEYXkTIW9NgomN2M5ane9Gref5ePYt9SS0M";
+
+const GITHUB_RAW = "https://raw.githubusercontent.com/judy658/arena-server/main/music_kits";
+
+// Oyuncunun music_kit'ini Supabase'den çek
+async function fetchMusicKit(username) {
+  try {
+    const res = await fetch(
+      `${AR_URL}/rest/v1/zortorant_players?username=eq.${encodeURIComponent(username)}&select=music_kit&limit=1`,
+      { headers: { "apikey": AR_KEY, "Authorization": `Bearer ${AR_KEY}` } }
+    );
+    const data = await res.json();
+    if (data && data[0] && data[0]["music kit"]) {
+      return data[0]["music kit"];
+    }
+    return null;
+  } catch(e) {
+    console.error("fetchMusicKit error:", e.message);
+    return null;
+  }
+}
+
 const port = Number(process.env.PORT || 3000);
 const app  = express();
 app.use(express.json());
@@ -198,25 +224,45 @@ function send(ws, msg) {
 function startRoundBreak(room) {
   console.log("Round break basliyor...");
 
-  // Round MVP: bu round'daki en yüksek kill (roundKills takip ediliyor)
+  // Round MVP: bu round'daki en yüksek kill
   let mvpId = null, mvpKills = -1;
   Object.values(room.players).forEach((p) => {
     const rk = p.roundKills || 0;
     if (rk > mvpKills) { mvpKills = rk; mvpId = p.sessionId; }
   });
+
+  // Round kill sayaçlarını sıfırla
+  Object.values(room.players).forEach((p) => { p.roundKills = 0; });
+
   if (mvpKills > 0 && mvpId) {
     const mvpP = room.players[mvpId];
+    const mvpUsername = mvpP.username || mvpId;
+    // Supabase'den music_kit'i async çek, sonra MVP'yi set et
+    fetchMusicKit(mvpUsername).then((kit) => {
+      if (room.phase === "gameover") return;
+      room.roundMvp = {
+        sessionId:   mvpId,
+        username:    mvpUsername,
+        characterId: mvpP.characterId || "murffy",
+        kills:       mvpKills,
+        musicKit:    kit || null,
+        musicUrl:    kit ? `${GITHUB_RAW}/${kit}/mvp.mp3` : null,
+      };
+      broadcast(room, { type: "state", state: getState(room) });
+      console.log(`MVP: ${mvpUsername} | kit: ${kit || "yok"}`);
+    });
+    // Geçici MVP (kit gelmeden önce banner göster)
     room.roundMvp = {
       sessionId:   mvpId,
-      username:    mvpP.username || mvpId,
+      username:    mvpUsername,
       characterId: mvpP.characterId || "murffy",
       kills:       mvpKills,
+      musicKit:    null,
+      musicUrl:    null,
     };
   } else {
     room.roundMvp = null;
   }
-  // Round kill sayaçlarını sıfırla
-  Object.values(room.players).forEach((p) => { p.roundKills = 0; });
 
   room.phase       = "roundbreak";
   room.countdown   = 0;
