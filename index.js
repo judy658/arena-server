@@ -166,14 +166,15 @@ function makePlayer(ws, idx, isMega = false) {
 
 function getState(room) {
   return {
-    phase:     room.phase,
-    doorsOpen: room.doorsOpen || false,
-    winnerId:  room.winnerId,
-    countdown: room.countdown,
-    shopTimer: room.shopTimer || 0,
-    eloChange: room.eloChange || 0,
-    players:   room.players,  // armorHp her player objesinde taşınıyor
-    bullets:   room.bullets,
+    phase:       room.phase,
+    doorsOpen:   room.doorsOpen || false,
+    winnerId:    room.winnerId,
+    countdown:   room.countdown,
+    shopTimer:   room.shopTimer || 0,
+    eloChange:   room.eloChange || 0,
+    players:     room.players,
+    bullets:     room.bullets,
+    smokeClouds: room.smokeClouds || [],
   };
 }
 
@@ -193,10 +194,11 @@ function send(ws, msg) {
 // =====================
 function startRoundBreak(room) {
   console.log("Round break basliyor...");
-  room.phase     = "roundbreak";
-  room.countdown = 0;
-  room.shopTimer = 0;
-  room.bullets   = {};
+  room.phase       = "roundbreak";
+  room.countdown   = 0;
+  room.shopTimer   = 0;
+  room.bullets     = {};
+  room.smokeClouds = [];
 
   Object.values(room.players).forEach((p) => {
     const spawnList = room.isMega ? SPAWNS_MEGA : SPAWNS_SMALL;
@@ -307,6 +309,15 @@ function tickRoom(room) {
     }
   });
   moveBullets(room, dt);
+
+  // Smoke cloud yaşam süresi azalt
+  if (room.smokeClouds && room.smokeClouds.length > 0) {
+    room.smokeClouds = room.smokeClouds.filter(sc => {
+      sc.life -= dt;
+      return sc.life > 0;
+    });
+  }
+
   broadcast(room, { type: "state", state: getState(room) });
 }
 
@@ -485,6 +496,22 @@ wss.on("connection", (ws) => {
     if (msg.type === "door") {
       room.doorsOpen = msg.open === true;
       broadcast(room, { type: "state", state: getState(room) });
+    }
+
+    if (msg.type === "smoke_throw") {
+      // Grenade patlama pozisyonunu sunucu hesaplar (client açı+hız gönderir)
+      const SMOKE_SPEED  = 280.0;
+      const SMOKE_RANGE  = 400.0;
+      const SMOKE_TRAVEL = SMOKE_RANGE / SMOKE_SPEED;  // sn
+      const angle = msg.angle || 0;
+      const landX = p.x + Math.cos(angle) * SMOKE_RANGE;
+      const landY = p.y + Math.sin(angle) * SMOKE_RANGE;
+      if (!room.smokeClouds) room.smokeClouds = [];
+      room.smokeClouds.push({
+        x: landX, y: landY,
+        life: 6.0, maxLife: 6.0,
+        maxR: 90.0,
+      });
     }
 
     if (msg.type === "elo") {
