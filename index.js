@@ -160,6 +160,7 @@ function makePlayer(ws, idx, isMega = false) {
     armorActive: false,
     armorHp:     0,      // zırh canı (0 = zırh yok)
     maxArmorHp:  0,      // max zırh canı
+    hasHelmet:   false,  // Kask — %15 hasar azaltma
   };
 }
 
@@ -330,6 +331,8 @@ function applyDamage(room, target, attacker, dmg) {
 
   // Mağaza zırhı — hasar önce zırh canına gider
   let remainDmg = dmg;
+  // Kask — %15 hasar azaltma (her türlü hasara uygulanır)
+  if (target.hasHelmet) remainDmg = Math.round(remainDmg * 0.85);
   if (target.armorHp > 0) {
     if (target.armorHp >= remainDmg) {
       target.armorHp -= remainDmg;
@@ -473,6 +476,8 @@ wss.on("connection", (ws) => {
       // Zırh satın alımı — armorHp güncelle
       if (itemId === 0) { p.armorHp = Math.max(p.armorHp, 50);  p.maxArmorHp = 50;  }  // Hafif Zırh
       if (itemId === 1) { p.armorHp = Math.max(p.armorHp, 100); p.maxArmorHp = 100; }  // Ağır Zırh
+      if (itemId === 2) { p.hasHelmet = true; }                                          // Kask
+      if (itemId === 3) { p.hp = Math.min(p.maxHp || MAX_HP, p.hp + 50); }              // Can İksiri
       broadcast(room, { type: "state", state: getState(room) });
     }
 
