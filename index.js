@@ -158,6 +158,8 @@ function makePlayer(ws, idx, isMega = false) {
     frozen:      true,
     firing:      false,
     armorActive: false,
+    armorHp:     0,      // zırh canı (0 = zırh yok)
+    maxArmorHp:  0,      // max zırh canı
   };
 }
 
@@ -169,7 +171,7 @@ function getState(room) {
     countdown: room.countdown,
     shopTimer: room.shopTimer || 0,
     eloChange: room.eloChange || 0,
-    players:   room.players,
+    players:   room.players,  // armorHp her player objesinde taşınıyor
     bullets:   room.bullets,
   };
 }
@@ -203,6 +205,7 @@ function startRoundBreak(room) {
     p.hp     = p.maxHp || MAX_HP;
     p.alive  = true;
     p.frozen = true;
+    // armorHp korunur — kırılmamışsa bir sonraki raunda taşınır
   });
 
   broadcast(room, { type: "state", state: getState(room) });
@@ -306,7 +309,7 @@ function tickRoom(room) {
 }
 
 function applyDamage(room, target, attacker, dmg) {
-  // Zırh aktifse hasarı yansıt
+  // Inferno zırh yeteneği aktifse hasarı yansıt
   if (target.armorActive && attacker) {
     const REFLECT = 20;
     attacker.hp -= REFLECT;
@@ -322,10 +325,26 @@ function applyDamage(room, target, attacker, dmg) {
       startRoundBreak(room);
       return false;
     }
-    return false; // hasar yansıdı, hedefe gitmedi
+    return false;
   }
-  // Normal hasar
-  target.hp -= dmg;
+
+  // Mağaza zırhı — hasar önce zırh canına gider
+  let remainDmg = dmg;
+  if (target.armorHp > 0) {
+    if (target.armorHp >= remainDmg) {
+      target.armorHp -= remainDmg;
+      remainDmg = 0;
+    } else {
+      remainDmg -= target.armorHp;
+      target.armorHp = 0;
+    }
+  }
+
+  // Kalan hasar HP'ye
+  if (remainDmg > 0) {
+    target.hp -= remainDmg;
+  }
+
   if (target.hp <= 0) {
     target.hp = 0; target.alive = false; target.deaths++;
     if (attacker) {
@@ -447,6 +466,14 @@ wss.on("connection", (ws) => {
       room.winKills = msg.win_kills || WIN_KILLS;
       if (room.phase === "waiting") startRoundBreak(room);
       console.log("win_kills guncellendi: " + room.winKills);
+    }
+
+    if (msg.type === "shop_buy") {
+      const itemId = msg.itemId;
+      // Zırh satın alımı — armorHp güncelle
+      if (itemId === 0) { p.armorHp = Math.max(p.armorHp, 50);  p.maxArmorHp = 50;  }  // Hafif Zırh
+      if (itemId === 1) { p.armorHp = Math.max(p.armorHp, 100); p.maxArmorHp = 100; }  // Ağır Zırh
+      broadcast(room, { type: "state", state: getState(room) });
     }
 
     if (msg.type === "door") {
