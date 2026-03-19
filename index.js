@@ -493,6 +493,14 @@ wss.on("connection", (ws) => {
       broadcast(room, { type: "state", state: getState(room) });
     }
 
+    if (msg.type === "armor_activate") {
+      p.armorActive = true;
+      // 4 saniye sonra otomatik kapat
+      setTimeout(() => {
+        p.armorActive = false;
+      }, 4000);
+    }
+
     if (msg.type === "door") {
       room.doorsOpen = msg.open === true;
       broadcast(room, { type: "state", state: getState(room) });
