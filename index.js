@@ -206,6 +206,7 @@ function startRoundBreak(room) {
     p.hp     = p.maxHp || MAX_HP;
     p.alive  = true;
     p.frozen = true;
+    p.hasHelmet = false;  // Kask ölünce düşer
     // armorHp korunur — kırılmamışsa bir sonraki raunda taşınır
   });
 
@@ -476,7 +477,7 @@ wss.on("connection", (ws) => {
       // Zırh satın alımı — armorHp güncelle
       if (itemId === 0) { p.armorHp = Math.max(p.armorHp, 50);  p.maxArmorHp = 50;  }  // Hafif Zırh
       if (itemId === 1) { p.armorHp = Math.max(p.armorHp, 100); p.maxArmorHp = 100; }  // Ağır Zırh
-      if (itemId === 2) { p.hasHelmet = true; }                                          // Kask
+      if (itemId === 2) { if (!p.hasHelmet) p.hasHelmet = true; }                        // Kask (tekrar alınamaz)
       if (itemId === 3) { p.hp = Math.min(p.maxHp || MAX_HP, p.hp + 50); }              // Can İksiri
       broadcast(room, { type: "state", state: getState(room) });
     }
