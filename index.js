@@ -15,7 +15,7 @@ const GITHUB_RAW = "https://raw.githubusercontent.com/judy658/arena-server/main/
 async function fetchMusicKit(username) {
   try {
     const res = await fetch(
-      `${AR_URL}/rest/v1/zortorant_players?username=eq.${encodeURIComponent(username)}&select=music_kit&limit=1`,
+      `${AR_URL}/rest/v1/zortorant_players?username=eq.${encodeURIComponent(username)}&select=music%20kit&limit=1`,
       { headers: { "apikey": AR_KEY, "Authorization": `Bearer ${AR_KEY}` } }
     );
     const data = await res.json();
