@@ -161,6 +161,8 @@ function makePlayer(ws, idx, isMega = false) {
     armorHp:     0,      // zırh canı (0 = zırh yok)
     maxArmorHp:  0,      // max zırh canı
     hasHelmet:   false,  // Kask — %15 hasar azaltma
+    username:    ws.username || ws.sessionId,
+    roundKills:  0,
   };
 }
 
@@ -175,6 +177,7 @@ function getState(room) {
     players:     room.players,
     bullets:     room.bullets,
     smokeClouds: room.smokeClouds || [],
+    roundMvp:    room.roundMvp   || null,
   };
 }
 
@@ -194,6 +197,27 @@ function send(ws, msg) {
 // =====================
 function startRoundBreak(room) {
   console.log("Round break basliyor...");
+
+  // Round MVP: bu round'daki en yüksek kill (roundKills takip ediliyor)
+  let mvpId = null, mvpKills = -1;
+  Object.values(room.players).forEach((p) => {
+    const rk = p.roundKills || 0;
+    if (rk > mvpKills) { mvpKills = rk; mvpId = p.sessionId; }
+  });
+  if (mvpKills > 0 && mvpId) {
+    const mvpP = room.players[mvpId];
+    room.roundMvp = {
+      sessionId:   mvpId,
+      username:    mvpP.username || mvpId,
+      characterId: mvpP.characterId || "murffy",
+      kills:       mvpKills,
+    };
+  } else {
+    room.roundMvp = null;
+  }
+  // Round kill sayaçlarını sıfırla
+  Object.values(room.players).forEach((p) => { p.roundKills = 0; });
+
   room.phase       = "roundbreak";
   room.countdown   = 0;
   room.shopTimer   = 0;
@@ -329,6 +353,8 @@ function applyDamage(room, target, attacker, dmg) {
     if (attacker.hp <= 0) {
       attacker.hp = 0; attacker.alive = false; attacker.deaths++;
       target.kills++;
+      if (!target.roundKills) target.roundKills = 0;
+      target.roundKills++;
       if (target.kills >= (room.winKills || WIN_KILLS)) {
         room.phase = "gameover"; room.winnerId = target.sessionId;
         clearInterval(room.loop);
@@ -364,6 +390,8 @@ function applyDamage(room, target, attacker, dmg) {
     target.hp = 0; target.alive = false; target.deaths++;
     if (attacker) {
       attacker.kills++;
+      if (!attacker.roundKills) attacker.roundKills = 0;
+      attacker.roundKills++;
       if (attacker.kills >= (room.winKills || WIN_KILLS)) {
         room.phase = "gameover"; room.winnerId = attacker.sessionId;
         clearInterval(room.loop);
@@ -463,8 +491,9 @@ wss.on("connection", (ws) => {
     if (msg.type === "search") {
       if (ws.room) return; // zaten odada
       const mode = msg.mode === "mega_duel" ? "mega_duel" : "duel";
-      ws.mode = mode;
-      ws.elo  = msg.elo || 0;
+      ws.mode     = mode;
+      ws.elo      = msg.elo || 0;
+      ws.username = msg.username || ws.sessionId;
       tryMatchmaking(ws, mode);
       return;
     }
