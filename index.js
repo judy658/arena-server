@@ -257,6 +257,7 @@ function startRoundBreak(room) {
         clearInterval(iv);
         room.phase     = "playing";
         room.shopTimer = 0;
+        room.roundMvp  = null;  // round başlayınca MVP banner'ı temizle
         Object.values(room.players).forEach((p) => { p.frozen = false; });
         broadcast(room, { type: "state", state: getState(room) });
         console.log("Round basladi!");
