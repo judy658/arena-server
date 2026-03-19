@@ -14,11 +14,13 @@ const GITHUB_RAW = "https://raw.githubusercontent.com/judy658/arena-server/main/
 // Oyuncunun music_kit'ini Supabase'den çek
 async function fetchMusicKit(username) {
   try {
+    console.log(`Supabase sorgusu: username=${username}`);
     const res = await fetch(
       `${AR_URL}/rest/v1/zortorant_players?username=eq.${encodeURIComponent(username)}&select=music%20kit&limit=1`,
       { headers: { "apikey": AR_KEY, "Authorization": `Bearer ${AR_KEY}` } }
     );
     const data = await res.json();
+    console.log(`Supabase yanıtı:`, JSON.stringify(data));
     if (data && data[0] && data[0]["music kit"]) {
       return data[0]["music kit"];
     }
@@ -228,6 +230,7 @@ function startRoundBreak(room) {
   let mvpId = null, mvpKills = -1;
   Object.values(room.players).forEach((p) => {
     const rk = p.roundKills || 0;
+    console.log(`Player ${p.username || p.sessionId} roundKills: ${rk}`);
     if (rk > mvpKills) { mvpKills = rk; mvpId = p.sessionId; }
   });
 
