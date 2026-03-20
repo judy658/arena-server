@@ -3,6 +3,24 @@ const WebSocket = require("ws");
 const WebSocketServer = WebSocket.Server;
 const express   = require("express");
 const https     = require("https");
+const nodemailer = require("nodemailer");
+
+// =====================
+// OTP AYARLARI
+// =====================
+const OTP_ENABLED = true;   // false yapınca OTP atlanır, direkt giriş olur
+
+const GMAIL_USER = process.env.GMAIL_USER || "geceninhakimistudio@gmail.com";
+const GMAIL_PASS = process.env.GMAIL_PASS || "";  // Render'da Environment Variable olarak gir!
+
+const otpStore = {};  // { email: { code, expiresAt } }
+
+const transporter = nodemailer.createTransport({
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false,
+  auth: { user: GMAIL_USER, pass: GMAIL_PASS },
+});
 
 // =====================
 // SUPABASE (Arena DB)
@@ -71,6 +89,70 @@ app.get("/status", (req, res) => {
     capacity: 60,
     full:     playerCount >= 60,
   });
+});
+
+// =====================
+// OTP ENDPOİNTLERİ
+// =====================
+
+// OTP gönder — giriş şifresi doğrulandıktan sonra çağrılır
+app.post("/send-otp", async (req, res) => {
+  if (!OTP_ENABLED) {
+    return res.json({ success: true, skipped: true });
+  }
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "email gerekli" });
+
+  const code      = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = Date.now() + 5 * 60 * 1000;  // 5 dakika
+  otpStore[email] = { code, expiresAt };
+
+  console.log(`OTP gönderiliyor: ${email} → ${code}`);
+
+  try {
+    await transporter.sendMail({
+      from:    `"Zortorant" <${GMAIL_USER}>`,
+      to:      email,
+      subject: "Zortorant Giriş Kodu",
+      html: `
+        <div style="background:#0d0f14;padding:32px;font-family:monospace;color:#e0e0e0;border-radius:12px;max-width:420px;margin:auto">
+          <h2 style="color:#29b6f6;margin:0 0 8px">ZORTORANT</h2>
+          <p style="color:#7090a0;margin:0 0 24px;font-size:13px">Giriş Doğrulama Kodu</p>
+          <div style="background:#1a1d24;border:2px solid #29b6f6;border-radius:8px;padding:24px;text-align:center">
+            <span style="font-size:40px;font-weight:bold;letter-spacing:12px;color:#ffffff">${code}</span>
+          </div>
+          <p style="margin:20px 0 0;font-size:12px;color:#506070">Bu kod 5 dakika geçerlidir.<br>Kodu kimseyle paylaşma.</p>
+        </div>
+      `,
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("OTP mail gönderilemedi:", err.message);
+    res.status(500).json({ error: "Mail gönderilemedi: " + err.message });
+  }
+});
+
+// OTP doğrula
+app.post("/verify-otp", (req, res) => {
+  if (!OTP_ENABLED) {
+    return res.json({ success: true, skipped: true });
+  }
+  const { email, code } = req.body;
+  if (!email || !code) return res.status(400).json({ error: "email ve code gerekli" });
+
+  const entry = otpStore[email];
+  if (!entry) return res.json({ success: false, error: "Kod bulunamadı. Tekrar giriş deneyin." });
+  if (Date.now() > entry.expiresAt) {
+    delete otpStore[email];
+    return res.json({ success: false, error: "Kod süresi doldu. Tekrar giriş deneyin." });
+  }
+  if (entry.code !== code.trim()) {
+    return res.json({ success: false, error: "Hatalı kod!" });
+  }
+
+  delete otpStore[email];  // tek kullanım
+  console.log(`OTP doğrulandı: ${email}`);
+  res.json({ success: true });
 });
 
 const server = http.createServer(app);
