@@ -3,24 +3,59 @@ const WebSocket = require("ws");
 const WebSocketServer = WebSocket.Server;
 const express   = require("express");
 const https     = require("https");
-const nodemailer = require("nodemailer");
 
 // =====================
 // OTP AYARLARI
 // =====================
-const OTP_ENABLED = true;   // false yapınca OTP atlanır, direkt giriş olur
-
-const GMAIL_USER = process.env.GMAIL_USER || "geceninhakimistudio@gmail.com";
-const GMAIL_PASS = process.env.GMAIL_PASS || "";  // Render'da Environment Variable olarak gir!
+const OTP_ENABLED  = true;   // false yapınca OTP atlanır, direkt giriş olur
+const RESEND_KEY   = process.env.RESEND_KEY || "";  // Render'da env var olarak gir!
 
 const otpStore = {};  // { email: { code, expiresAt } }
 
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
-  auth: { user: GMAIL_USER, pass: GMAIL_PASS },
-});
+function sendResendMail(to, code) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({
+      from:    "Zortorant <onboarding@resend.dev>",
+      to:      [to],
+      subject: "Zortorant Giriş Kodu",
+      html: `
+        <div style="background:#0d0f14;padding:32px;font-family:monospace;color:#e0e0e0;border-radius:12px;max-width:420px;margin:auto">
+          <h2 style="color:#29b6f6;margin:0 0 8px">ZORTORANT</h2>
+          <p style="color:#7090a0;margin:0 0 24px;font-size:13px">Giriş Doğrulama Kodu</p>
+          <div style="background:#1a1d24;border:2px solid #29b6f6;border-radius:8px;padding:24px;text-align:center">
+            <span style="font-size:40px;font-weight:bold;letter-spacing:12px;color:#ffffff">${code}</span>
+          </div>
+          <p style="margin:20px 0 0;font-size:12px;color:#506070">Bu kod 5 dakika geçerlidir.<br>Kodu kimseyle paylaşma.</p>
+        </div>
+      `,
+    });
+    const options = {
+      hostname: "api.resend.com",
+      path:     "/emails",
+      method:   "POST",
+      headers:  {
+        "Authorization": `Bearer ${RESEND_KEY}`,
+        "Content-Type":  "application/json",
+        "Content-Length": Buffer.byteLength(body),
+      },
+    };
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.on("data", chunk => { data += chunk; });
+      res.on("end", () => {
+        console.log(`Resend yanıtı (${res.statusCode}): ${data}`);
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve();
+        } else {
+          reject(new Error(`Resend HTTP ${res.statusCode}: ${data}`));
+        }
+      });
+    });
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
 
 // =====================
 // SUPABASE (Arena DB)
@@ -110,21 +145,7 @@ app.post("/send-otp", async (req, res) => {
   console.log(`OTP gönderiliyor: ${email} → ${code}`);
 
   try {
-    await transporter.sendMail({
-      from:    `"Zortorant" <${GMAIL_USER}>`,
-      to:      email,
-      subject: "Zortorant Giriş Kodu",
-      html: `
-        <div style="background:#0d0f14;padding:32px;font-family:monospace;color:#e0e0e0;border-radius:12px;max-width:420px;margin:auto">
-          <h2 style="color:#29b6f6;margin:0 0 8px">ZORTORANT</h2>
-          <p style="color:#7090a0;margin:0 0 24px;font-size:13px">Giriş Doğrulama Kodu</p>
-          <div style="background:#1a1d24;border:2px solid #29b6f6;border-radius:8px;padding:24px;text-align:center">
-            <span style="font-size:40px;font-weight:bold;letter-spacing:12px;color:#ffffff">${code}</span>
-          </div>
-          <p style="margin:20px 0 0;font-size:12px;color:#506070">Bu kod 5 dakika geçerlidir.<br>Kodu kimseyle paylaşma.</p>
-        </div>
-      `,
-    });
+    await sendResendMail(email, code);
     res.json({ success: true });
   } catch (err) {
     console.error("OTP mail gönderilemedi:", err.message);
