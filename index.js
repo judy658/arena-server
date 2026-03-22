@@ -14,30 +14,31 @@ const GMAIL_PASS   = process.env.GMAIL_PASS || "";
 const otpStore = {};  // { email: { code, expiresAt } }
 
 async function sendResendMail(to, code) {
-  const nodemailer = require("nodemailer");
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
-  auth: {
-    user: GMAIL_USER,
-    pass: GMAIL_PASS,
-  },
-});
-  await transporter.sendMail({
-    from: `"Zortorant" <${GMAIL_USER}>`,
-    to: to,
-    subject: "Zortorant Giriş Kodu",
-    html: `
-      <div style="background:#0d0f14;padding:32px;font-family:monospace;color:#e0e0e0;border-radius:12px;max-width:420px;margin:auto">
-        <h2 style="color:#29b6f6;margin:0 0 8px">ZORTORANT</h2>
-        <p style="color:#7090a0;margin:0 0 24px;font-size:13px">Giriş Doğrulama Kodu</p>
-        <div style="background:#1a1d24;border:2px solid #29b6f6;border-radius:8px;padding:24px;text-align:center">
-          <span style="font-size:40px;font-weight:bold;letter-spacing:12px;color:#ffffff">${code}</span>
-        </div>
-        <p style="margin:20px 0 0;font-size:12px;color:#506070">Bu kod 5 dakika geçerlidir.<br>Kodu kimseyle paylaşma.</p>
-      </div>
-    `,
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ email: to, gotrue_meta_security: {} });
+    const options = {
+      hostname: "jnuckqaiutmkiquptvzu.supabase.co",
+      path: "/auth/v1/recover",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpudWNrcWFpdXRta2lxdXB0dnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MDgzMTAsImV4cCI6MjA4ODk4NDMxMH0.sP_FoTrYOFWiIS7PdaFYtR1JbP5vGf_KLgc_jh7zhZY",
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpudWNrcWFpdXRta2lxdXB0dnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MDgzMTAsImV4cCI6MjA4ODk4NDMxMH0.sP_FoTrYOFWiIS7PdaFYtR1JbP5vGf_KLgc_jh7zhZY",
+        "Content-Length": Buffer.byteLength(body),
+      },
+    };
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.on("data", chunk => { data += chunk; });
+      res.on("end", () => {
+        console.log(`Mail yanıtı (${res.statusCode}): ${data}`);
+        if (res.statusCode >= 200 && res.statusCode < 300) resolve();
+        else reject(new Error(`Mail HTTP ${res.statusCode}: ${data}`));
+      });
+    });
+    req.on("error", reject);
+    req.write(body);
+    req.end();
   });
 }
 // =====================
