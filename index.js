@@ -9,7 +9,7 @@ const https     = require("https");
 // =====================
 const OTP_ENABLED  = true;
 const GMAIL_USER   = "geceninhakimistudio@gmail.com";
-const GMAIL_PASS   = process.env.GMAIL_PASS || "";
+const GMAIL_PASS   = process.env.GMAIL_PASS || ""; 
 
 const otpStore = {};  // { email: { code, expiresAt } }
 
