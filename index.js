@@ -15,16 +15,15 @@ const otpStore = {};  // { email: { code, expiresAt } }
 
 async function sendResendMail(to, code) {
   const nodemailer = require("nodemailer");
-  const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    auth: {
-      user: GMAIL_USER,
-      pass: GMAIL_PASS,
-    },
-  });
-
+const transporter = nodemailer.createTransport({
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
+  auth: {
+    user: GMAIL_USER,
+    pass: GMAIL_PASS,
+  },
+});
   await transporter.sendMail({
     from: `"Zortorant" <${GMAIL_USER}>`,
     to: to,
