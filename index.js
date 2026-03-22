@@ -22,7 +22,7 @@ async function sendResendMail(to, code) {
     });
     const options = {
       hostname: "kxbjcrtpnslimbqwebpx.supabase.co",
-      path: "/auth/v1/otp",
+      path: "/auth/v1/magiclink",
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -118,7 +118,7 @@ app.get("/status", (req, res) => {
 // OTP ENDPOİNTLERİ
 // =====================
 
-// OTP gönder — giriş şifresi doğrulandıktan sonra çağrılır
+// OTP gönder — magic link ile Supabase üzerinden gönderir
 app.post("/send-otp", async (req, res) => {
   if (!OTP_ENABLED) {
     return res.json({ success: true, skipped: true });
@@ -126,21 +126,10 @@ app.post("/send-otp", async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: "email gerekli" });
 
-  // Zaten geçerli bir kod varsa yeni kod üretme, sadece onayla
-  const existing = otpStore[email];
-  if (existing && Date.now() < existing.expiresAt) {
-    console.log(`OTP zaten aktif, tekrar gönderilmiyor: ${email}`);
-    return res.json({ success: true });
-  }
-
-  const code      = Math.floor(100000 + Math.random() * 900000).toString();
-  const expiresAt = Date.now() + 5 * 60 * 1000;  // 5 dakika
-  otpStore[email] = { code, expiresAt };
-
-  console.log(`OTP gönderiliyor: ${email} → ${code}`);
+  console.log(`OTP gönderiliyor: ${email}`);
 
   try {
-    await sendResendMail(email, code);
+    await sendResendMail(email, null);
     res.json({ success: true });
   } catch (err) {
     console.error("OTP mail gönderilemedi:", err.message);
@@ -148,27 +137,54 @@ app.post("/send-otp", async (req, res) => {
   }
 });
 
-// OTP doğrula
-app.post("/verify-otp", (req, res) => {
+// OTP doğrula — Supabase token'ını doğrular
+app.post("/verify-otp", async (req, res) => {
   if (!OTP_ENABLED) {
     return res.json({ success: true, skipped: true });
   }
   const { email, code } = req.body;
   if (!email || !code) return res.status(400).json({ error: "email ve code gerekli" });
 
-  const entry = otpStore[email];
-  if (!entry) return res.json({ success: false, error: "Kod bulunamadı. Tekrar giriş deneyin." });
-  if (Date.now() > entry.expiresAt) {
-    delete otpStore[email];
-    return res.json({ success: false, error: "Kod süresi doldu. Tekrar giriş deneyin." });
-  }
-  if (entry.code !== code.trim()) {
-    return res.json({ success: false, error: "Hatalı kod!" });
-  }
-
-  delete otpStore[email];  // tek kullanım
-  console.log(`OTP doğrulandı: ${email}`);
-  res.json({ success: true });
+  return new Promise((resolve) => {
+    const body = JSON.stringify({
+      email,
+      token: code.trim(),
+      type: "magiclink",
+      gotrue_meta_security: {}
+    });
+    const options = {
+      hostname: "kxbjcrtpnslimbqwebpx.supabase.co",
+      path: "/auth/v1/verify",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": AR_KEY,
+        "Authorization": `Bearer ${AR_KEY}`,
+        "Content-Length": Buffer.byteLength(body),
+      },
+    };
+    const req2 = https.request(options, (r) => {
+      let data = "";
+      r.on("data", chunk => { data += chunk; });
+      r.on("end", () => {
+        console.log(`OTP doğrulama yanıtı (${r.statusCode}): ${data}`);
+        if (r.statusCode >= 200 && r.statusCode < 300) {
+          console.log(`OTP doğrulandı: ${email}`);
+          res.json({ success: true });
+        } else {
+          const parsed = JSON.parse(data);
+          res.json({ success: false, error: parsed.msg || parsed.error_description || "Hatalı veya süresi dolmuş kod!" });
+        }
+        resolve();
+      });
+    });
+    req2.on("error", (e) => {
+      res.status(500).json({ error: e.message });
+      resolve();
+    });
+    req2.write(body);
+    req2.end();
+  });
 });
 
 const server = http.createServer(app);
