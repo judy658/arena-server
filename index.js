@@ -750,23 +750,24 @@ wss.on("connection", (ws) => {
     // GHOST — Sniper atışı
     if (msg.type === "ghost_snipe" && p.alive && !p.frozen && room.phase === "playing") {
       const SNIPER_DMG = 100;
+      const RAY_HIT_RADIUS = PLAYER_RADIUS + 4; // mermi çizgisine bu kadar yakın olursa isabet
+      const dirX = Math.cos(msg.angle);
+      const dirY = Math.sin(msg.angle);
       Object.values(room.players).forEach((target) => {
         if (!target.alive || target.sessionId === ws.sessionId) return;
-        // Ray cast: angle doğrultusunda hedef var mı?
+        // Hedef ile ateş noktası arasındaki vektör
         const dx = target.x - msg.x;
         const dy = target.y - msg.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        // Hedefin açısı ile sniper açısı arasındaki fark
-        const targetAngle = Math.atan2(dy, dx);
-        let angleDiff = targetAngle - msg.angle;
-        while (angleDiff >  Math.PI) angleDiff -= 2*Math.PI;
-        while (angleDiff < -Math.PI) angleDiff += 2*Math.PI;
-        // Dar açı toleransı (keskin nişancı hassasiyeti)
-        if (Math.abs(angleDiff) > 0.12) return;
+        // Hedef ışının önünde mi? (arkasını vurmasın)
+        const dot = dx * dirX + dy * dirY;
+        if (dot < 0) return;
+        // Işına dik mesafe (cross product)
+        const cross = Math.abs(dx * dirY - dy * dirX);
+        if (cross > RAY_HIT_RADIUS) return;
         // Duvar kontrolü
         if (rayHitsObstacle(msg.x, msg.y, target.x, target.y, room.obstacles || OBSTACLES_SMALL)) return;
         applyDamage(room, target, p, SNIPER_DMG);
-        console.log(ws.sessionId + " ghost_snipe isabet! Hedef: " + target.sessionId);
+        console.log(ws.sessionId + " ghost_snipe isabet! Hedef: " + target.sessionId + " dist: " + Math.round(dot));
       });
     }
 
