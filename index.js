@@ -17,7 +17,7 @@ async function sendResendMail(to, code) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       email: to,
-      create_user: false,
+      create_user: true,
       gotrue_meta_security: {}
     });
     const options = {
