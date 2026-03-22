@@ -825,6 +825,7 @@ wss.on("connection", (ws) => {
       p.knifing     = msg.knifing || false;
       p.armorActive = msg.armorActive || false;
       p.firing      = msg.firing || false;
+      p.scopeOn     = msg.scopeOn || false;
     }
 
     if (msg.type === "shoot" && p.alive && !p.frozen && room.phase === "playing") {
