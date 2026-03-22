@@ -17,13 +17,13 @@ async function sendResendMail(to, code) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({ email: to, gotrue_meta_security: {} });
     const options = {
-      hostname: "jnuckqaiutmkiquptvzu.supabase.co",
+      hostname: "kxbjcrtpnslimbqwebpx.supabase.co",
       path: "/auth/v1/recover",
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpudWNrcWFpdXRta2lxdXB0dnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MDgzMTAsImV4cCI6MjA4ODk4NDMxMH0.sP_FoTrYOFWiIS7PdaFYtR1JbP5vGf_KLgc_jh7zhZY",
-        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpudWNrcWFpdXRta2lxdXB0dnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MDgzMTAsImV4cCI6MjA4ODk4NDMxMH0.sP_FoTrYOFWiIS7PdaFYtR1JbP5vGf_KLgc_jh7zhZY",
+        "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YmpjcnRwbnNsaW1icXdlYnB4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDI5MjEsImV4cCI6MjA4OTE3ODkyMX0.0moP-KsjTEYXkTIW9NgomN2M5ane9Gref5ePYt9SS0M",
+        "Authorization": eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YmpjcnRwbnNsaW1icXdlYnB4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDI5MjEsImV4cCI6MjA4OTE3ODkyMX0.0moP-KsjTEYXkTIW9NgomN2M5ane9Gref5ePYt9SS0M",
         "Content-Length": Buffer.byteLength(body),
       },
     };
