@@ -747,28 +747,41 @@ wss.on("connection", (ws) => {
       console.log(ws.sessionId + " karakter: " + msg.characterId + " HP: " + maxHp);
     }
 
-    // GHOST — Sniper atışı
+    // GHOST — Sniper atışı (adım adım ray march)
     if (msg.type === "ghost_snipe" && p.alive && !p.frozen && room.phase === "playing") {
-      const SNIPER_DMG = 100;
-      const RAY_HIT_RADIUS = PLAYER_RADIUS + 4; // mermi çizgisine bu kadar yakın olursa isabet
+      const SNIPER_DMG  = 100;
+      const STEP        = 6;          // her adım kaç px
+      const arW = room.arenaW || ARENA_W_SMALL;
+      const arH = room.arenaH || ARENA_H_SMALL;
       const dirX = Math.cos(msg.angle);
       const dirY = Math.sin(msg.angle);
-      Object.values(room.players).forEach((target) => {
-        if (!target.alive || target.sessionId === ws.sessionId) return;
-        // Hedef ile ateş noktası arasındaki vektör
-        const dx = target.x - msg.x;
-        const dy = target.y - msg.y;
-        // Hedef ışının önünde mi? (arkasını vurmasın)
-        const dot = dx * dirX + dy * dirY;
-        if (dot < 0) return;
-        // Işına dik mesafe (cross product)
-        const cross = Math.abs(dx * dirY - dy * dirX);
-        if (cross > RAY_HIT_RADIUS) return;
-        // Duvar kontrolü
-        if (rayHitsObstacle(msg.x, msg.y, target.x, target.y, room.obstacles || OBSTACLES_SMALL)) return;
-        applyDamage(room, target, p, SNIPER_DMG);
-        console.log(ws.sessionId + " ghost_snipe isabet! Hedef: " + target.sessionId + " dist: " + Math.round(dot));
-      });
+      const obstacles = room.obstacles || OBSTACLES_SMALL;
+      let cx = msg.x + dirX * (PLAYER_RADIUS + 6);
+      let cy = msg.y + dirY * (PLAYER_RADIUS + 6);
+      let hit = false;
+      while (!hit && cx >= 0 && cx <= arW && cy >= 0 && cy <= arH) {
+        cx += dirX * STEP;
+        cy += dirY * STEP;
+        // Duvar çarpışma kontrolü
+        let wallHit = false;
+        for (const obs of obstacles) {
+          if (cx > obs[0] && cx < obs[0]+obs[2] && cy > obs[1] && cy < obs[1]+obs[3]) {
+            wallHit = true; break;
+          }
+        }
+        if (wallHit) break;
+        // Oyuncu çarpışma kontrolü
+        for (const target of Object.values(room.players)) {
+          if (!target.alive || target.sessionId === ws.sessionId) continue;
+          const tdx = cx - target.x;
+          const tdy = cy - target.y;
+          if (tdx*tdx + tdy*tdy < PLAYER_RADIUS * PLAYER_RADIUS) {
+            applyDamage(room, target, p, SNIPER_DMG);
+            console.log(ws.sessionId + " ghost_snipe isabet!");
+            hit = true; break;
+          }
+        }
+      }
     }
 
     if (msg.type === "move") {
