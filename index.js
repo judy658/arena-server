@@ -15,10 +15,14 @@ const otpStore = {};  // { email: { code, expiresAt } }
 
 async function sendResendMail(to, code) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ email: to, gotrue_meta_security: {} });
+    const body = JSON.stringify({
+      email: to,
+      create_user: false,
+      gotrue_meta_security: {}
+    });
     const options = {
       hostname: "kxbjcrtpnslimbqwebpx.supabase.co",
-      path: "/auth/v1/recover",
+      path: "/auth/v1/otp",
       method: "POST",
       headers: {
         "Content-Type": "application/json",
