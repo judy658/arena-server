@@ -23,7 +23,7 @@ async function sendResendMail(to, code) {
       headers: {
         "Content-Type": "application/json",
         "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YmpjcnRwbnNsaW1icXdlYnB4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDI5MjEsImV4cCI6MjA4OTE3ODkyMX0.0moP-KsjTEYXkTIW9NgomN2M5ane9Gref5ePYt9SS0M",
-        "Authorization": eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YmpjcnRwbnNsaW1icXdlYnB4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDI5MjEsImV4cCI6MjA4OTE3ODkyMX0.0moP-KsjTEYXkTIW9NgomN2M5ane9Gref5ePYt9SS0M",
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YmpjcnRwbnNsaW1icXdlYnB4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDI5MjEsImV4cCI6MjA4OTE3ODkyMX0.0moP-KsjTEYXkTIW9NgomN2M5ane9Gref5ePYt9SS0M",
         "Content-Length": Buffer.byteLength(body),
       },
     };
