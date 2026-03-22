@@ -740,11 +740,34 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "character") {
-      const maxHp = msg.characterId === "inferno" ? 120 : 100;
+      const maxHp = msg.characterId === "inferno" ? 120 : (msg.characterId === "ghost" ? 90 : 100);
       p.maxHp       = maxHp;
       p.hp          = maxHp;
       p.characterId = msg.characterId || "murffy";
       console.log(ws.sessionId + " karakter: " + msg.characterId + " HP: " + maxHp);
+    }
+
+    // GHOST — Sniper atışı
+    if (msg.type === "ghost_snipe" && p.alive && !p.frozen && room.phase === "playing") {
+      const SNIPER_DMG = 100;
+      Object.values(room.players).forEach((target) => {
+        if (!target.alive || target.sessionId === ws.sessionId) return;
+        // Ray cast: angle doğrultusunda hedef var mı?
+        const dx = target.x - msg.x;
+        const dy = target.y - msg.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        // Hedefin açısı ile sniper açısı arasındaki fark
+        const targetAngle = Math.atan2(dy, dx);
+        let angleDiff = targetAngle - msg.angle;
+        while (angleDiff >  Math.PI) angleDiff -= 2*Math.PI;
+        while (angleDiff < -Math.PI) angleDiff += 2*Math.PI;
+        // Dar açı toleransı (keskin nişancı hassasiyeti)
+        if (Math.abs(angleDiff) > 0.12) return;
+        // Duvar kontrolü
+        if (rayHitsObstacle(msg.x, msg.y, target.x, target.y, room.obstacles || OBSTACLES_SMALL)) return;
+        applyDamage(room, target, p, SNIPER_DMG);
+        console.log(ws.sessionId + " ghost_snipe isabet! Hedef: " + target.sessionId);
+      });
     }
 
     if (msg.type === "move") {
