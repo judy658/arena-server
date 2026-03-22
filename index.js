@@ -22,7 +22,7 @@ async function sendResendMail(to, code) {
     });
     const options = {
       hostname: "kxbjcrtpnslimbqwebpx.supabase.co",
-      path: "/auth/v1/magiclink",
+      path: "/auth/v1/otp",
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -149,7 +149,7 @@ app.post("/verify-otp", async (req, res) => {
     const body = JSON.stringify({
       email,
       token: code.trim(),
-      type: "magiclink",
+      type: "email",
       gotrue_meta_security: {}
     });
     const options = {
