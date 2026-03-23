@@ -894,6 +894,20 @@ wss.on("connection", (ws) => {
         if (Math.abs(angleDiff) > Math.PI/3) return;
         applyDamage(room, target, p, KNIFE_DAMAGE);
       });
+      // Kukla bıçak kontrolü
+      if (room.decoy && room.decoy.ownerId !== ws.sessionId) {
+        const ddx = room.decoy.x - msg.x, ddy = room.decoy.y - msg.y;
+        if (Math.sqrt(ddx*ddx+ddy*ddy) <= KNIFE_RANGE + PLAYER_RADIUS) {
+          let angleDiff2 = Math.atan2(ddy, ddx) - msg.angle;
+          while (angleDiff2 >  Math.PI) angleDiff2 -= 2*Math.PI;
+          while (angleDiff2 < -Math.PI) angleDiff2 += 2*Math.PI;
+          if (Math.abs(angleDiff2) <= Math.PI/3) {
+            room.decoy.hp -= KNIFE_DAMAGE;
+            if (room.decoy.hp <= 0) room.decoy = null;
+            broadcast(room, { type: "state", state: getState(room) });
+          }
+        }
+      }
     }
 
     // Inferno - Alev Silahı (sürekli hasar)
