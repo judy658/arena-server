@@ -341,6 +341,7 @@ function getState(room) {
     bullets:     room.bullets,
     smokeClouds: room.smokeClouds || [],
     roundMvp:    room.roundMvp   || null,
+    decoy:       room.decoy      || null,
   };
 }
 
@@ -407,6 +408,7 @@ function startRoundBreak(room) {
   room.shopTimer   = 0;
   room.bullets     = {};
   room.smokeClouds = [];
+  room.decoy       = null;
 
   Object.values(room.players).forEach((p) => {
     const spawnList = room.isMega ? SPAWNS_MEGA : SPAWNS_SMALL;
@@ -614,6 +616,22 @@ function moveBullets(room, dt) {
         applyDamage(room, p, killer, BULLET_DMG);
       }
     });
+
+    // Kukla çarpışma — sadece decoy sahibi olmayan atabilir
+    if (room.decoy && !toRemove.includes(bid)) {
+      const d = room.decoy;
+      if (b.ownerId !== d.ownerId) {
+        const ddx = d.x - b.x, ddy = d.y - b.y;
+        if (Math.sqrt(ddx*ddx+ddy*ddy) < PLAYER_RADIUS + BULLET_RADIUS) {
+          toRemove.push(bid);
+          d.hp -= BULLET_DMG;
+          if (d.hp <= 0) {
+            room.decoy = null;
+          }
+          broadcast(room, { type: "state", state: getState(room) });
+        }
+      }
+    }
   });
 
   toRemove.forEach((bid) => delete room.bullets[bid]);
@@ -747,6 +765,18 @@ wss.on("connection", (ws) => {
       console.log(ws.sessionId + " karakter: " + msg.characterId + " HP: " + maxHp);
     }
 
+    // GHOST — Kukla yerleştir (Q tuşu)
+    if (msg.type === "ghost_decoy" && p.alive && !p.frozen && room.phase === "playing") {
+      // Aynı anda yalnızca 1 kukla
+      room.decoy = {
+        x:       msg.x,
+        y:       msg.y,
+        hp:      50,
+        ownerId: ws.sessionId,
+      };
+      broadcast(room, { type: "state", state: getState(room) });
+    }
+
     // GHOST — Sniper atışı (adım adım ray march)
     if (msg.type === "ghost_snipe" && p.alive && !p.frozen && room.phase === "playing") {
       const SNIPER_DMG  = 100;
@@ -779,6 +809,17 @@ wss.on("connection", (ws) => {
             applyDamage(room, target, p, SNIPER_DMG);
             console.log(ws.sessionId + " ghost_snipe isabet!");
             hit = true; break;
+          }
+        }
+        // Kukla çarpışma kontrolü
+        if (!hit && room.decoy && room.decoy.ownerId !== ws.sessionId) {
+          const ddx = cx - room.decoy.x;
+          const ddy = cy - room.decoy.y;
+          if (ddx*ddx + ddy*ddy < PLAYER_RADIUS * PLAYER_RADIUS) {
+            room.decoy.hp -= SNIPER_DMG;
+            if (room.decoy.hp <= 0) room.decoy = null;
+            broadcast(room, { type: "state", state: getState(room) });
+            hit = true;
           }
         }
       }
